@@ -1,4 +1,5 @@
 // Redemption City: Light Run 3D — main game
+import { RIM, SWAY_T, swayMats } from './toon.js';
 import { THREE, toon, VC, outline, P, G, merge, mergedMesh, canvasTex, signTex, signMesh, SOFT, CLOUD, Particles, makeHuman, poseHuman, randomLook, PLAYER_OUTFITS, SKINS } from './toon.js';
 import { danfo, truck, okada, cones, pothole, hawker, palmGeo, treeGeo, building, billboard, stall, streetLightGeo, bridge, setBridgeSign, gateArch, lanternMesh, textSprite } from './props.js';
 import * as C from './content.js';
@@ -40,7 +41,8 @@ const skyMat = new THREE.ShaderMaterial({
   side: THREE.BackSide, depthWrite: false, fog: false,
 });
 const sky = new THREE.Mesh(new THREE.SphereGeometry(500, 24, 12), skyMat); sky.renderOrder = -10; scene.add(sky);
-const sunDisc = new THREE.Sprite(new THREE.SpriteMaterial({ map: SOFT, color: 0xfff3c0, fog: false, depthWrite: false, transparent: true, blending: THREE.AdditiveBlending })); sunDisc.scale.set(90, 90, 1); sky.add(sunDisc);
+const sunHalo = new THREE.Sprite(new THREE.SpriteMaterial({ map: SOFT, color: 0xffe2a0, fog: false, depthWrite: false, transparent: true, opacity: 0.55, blending: THREE.AdditiveBlending })); sunHalo.scale.set(300, 300, 1); sky.add(sunHalo);
+const sunDisc = new THREE.Sprite(new THREE.SpriteMaterial({ map: SOFT, color: 0xfff3c0, fog: false, depthWrite: false, transparent: true, blending: THREE.AdditiveBlending })); sunDisc.scale.set(70, 70, 1); sky.add(sunDisc);
 const clouds = new THREE.Group(); scene.add(clouds);
 for (let i = 0; i < 11; i++) {
   const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: CLOUD, fog: false, depthWrite: false, transparent: true }));
@@ -58,7 +60,7 @@ function setSky(a, b, t, fogMul = 1) {
   skyMat.uniforms.top.value.copy(mix('top')); skyMat.uniforms.mid.value.copy(mix('mid')); skyMat.uniforms.bot.value.copy(mix('bot'));
   scene.fog.color.copy(mix('fog')); sun.color.copy(mix('sun')); sun.intensity = lerp(A.sunI, B.sunI, t);
   hemi.color.copy(mix('hemiS')); hemi.groundColor.copy(mix('hemiG')); hemi.intensity = lerp(A.hemiI, B.hemiI, t);
-  const sp = A.sunPos.map((v, i) => lerp(v, B.sunPos[i], t)); sunDisc.position.set(sp[0], sp[1], sp[2]).normalize().multiplyScalar(450);
+  const sp = A.sunPos.map((v, i) => lerp(v, B.sunPos[i], t)); sunDisc.position.set(sp[0], sp[1], sp[2]).normalize().multiplyScalar(450); sunHalo.position.copy(sunDisc.position).multiplyScalar(0.98); sunHalo.material.color.copy(mix('sun'));
   sunDisc.material.color.copy(mix('sun'));
   scene.fog.near = 60 / fogMul; scene.fog.far = 250 / fogMul;
 }
@@ -83,6 +85,42 @@ function beep(f, d = 0.08, type = 'sine', v = 0.12, delay = 0) {
   o.type = type; o.frequency.setValueAtTime(f, t); g.gain.setValueAtTime(v, t); g.gain.exponentialRampToValueAtTime(0.0001, t + d);
   o.connect(g); g.connect(actx.destination); o.start(t); o.stop(t + d + 0.02);
 }
+let noiseBuf = null;
+function noiseAt(t, d, v, hp = 6000) {
+  if (!soundOn || !actx) return;
+  if (!noiseBuf) { noiseBuf = actx.createBuffer(1, actx.sampleRate * 0.5, actx.sampleRate); const ch = noiseBuf.getChannelData(0); for (let i = 0; i < ch.length; i++) ch[i] = Math.random() * 2 - 1; }
+  const src = actx.createBufferSource(), f = actx.createBiquadFilter(), g = actx.createGain();
+  src.buffer = noiseBuf; f.type = 'highpass'; f.frequency.value = hp; g.gain.setValueAtTime(v, t); g.gain.exponentialRampToValueAtTime(0.0001, t + d);
+  src.connect(f); f.connect(g); g.connect(actx.destination); src.start(t); src.stop(t + d + 0.02);
+}
+function toneAt(f, t, d, type, v, f2) {
+  if (!soundOn || !actx) return;
+  const o = actx.createOscillator(), g = actx.createGain();
+  o.type = type; o.frequency.setValueAtTime(f, t); if (f2) o.frequency.exponentialRampToValueAtTime(f2, t + d * 0.8);
+  g.gain.setValueAtTime(v, t); g.gain.exponentialRampToValueAtTime(0.0001, t + d);
+  o.connect(g); g.connect(actx.destination); o.start(t); o.stop(t + d + 0.02);
+}
+// adaptive run music: tempo + layers rise with speed
+const MUS = { next: 0, step: 0 };
+const BASS = [55, 55, 65.4, 73.4, 49, 49, 58.3, 65.4];   // A A C D G G Bb C (warm minor-pentatonic groove)
+const ARP = [440, 523, 659, 784, 659, 523];
+function musicTick() {
+  if (!soundOn || !actx || S.mode !== 'run' || S.paused || !R) { MUS.next = 0; return; }
+  const bpm = Math.min(156, 92 + (R.speed - 11) * 3.6 + (R.fire > 0 ? 14 : 0)), stepDur = 60 / bpm / 2;
+  const lvl = R.fire > 0 ? 4 : R.speed < 14 ? 0 : R.speed < 18 ? 1 : R.speed < 22 ? 2 : 3;
+  const now = actx.currentTime; if (MUS.next < now) MUS.next = now + 0.05;
+  while (MUS.next < now + 0.14) {
+    const t = MUS.next, st = MUS.step % 8, bar = Math.floor(MUS.step / 8) % 8;
+    if (st === 0 || st === 4 || (lvl >= 3 && st === 7)) toneAt(150, t, 0.16, 'sine', 0.22, 42);
+    if (lvl >= 1 && (st === 2 || st === 6)) noiseAt(t, 0.09, 0.07, 1800);
+    if (lvl >= 2) noiseAt(t, 0.035, st % 2 ? 0.03 : 0.045, 7000);
+    if (lvl >= 3) noiseAt(t + stepDur / 2, 0.025, 0.022, 8000);
+    if (st % 2 === 0) toneAt(BASS[bar] * (st === 6 ? 1.5 : 1), t, stepDur * 1.6, 'triangle', 0.09);
+    if (lvl >= 4 || (lvl >= 3 && st % 2 === 0)) toneAt(ARP[(MUS.step) % ARP.length] * (R.fire > 0 ? 1.5 : 1), t, stepDur * 0.9, 'square', 0.022);
+    if (R.dark > 0 && st === 0) toneAt(41, t, stepDur * 8, 'sawtooth', 0.03);
+    MUS.next += stepDur; MUS.step++;
+  }
+}
 const sfx = {
   orb: () => beep(880 + Math.random() * 200, 0.07, 'triangle', 0.07),
   jump: () => beep(420, 0.1, 'square', 0.05),
@@ -92,6 +130,10 @@ const sfx = {
   stop: () => [660, 880].forEach((f, i) => beep(f, 0.12, 'square', 0.06, i * 0.1)),
   tap: () => beep(600, 0.04, 'triangle', 0.06),
   horn: () => { beep(330, 0.18, 'square', 0.05); beep(415, 0.18, 'square', 0.04); },
+  crash: () => { beep(110, 0.5, 'sawtooth', 0.14); beep(70, 0.6, 'square', 0.08, 0.06); if (actx) noiseAt(actx.currentTime, 0.4, 0.12, 400); },
+  whoosh: () => { if (actx) noiseAt(actx.currentTime, 0.18, 0.06, 2500); },
+  power: () => [392, 523, 659, 784, 1046].forEach((f, i) => beep(f, 0.14, 'square', 0.05, i * 0.06)),
+  shield: () => { beep(784, 0.2, 'sine', 0.1); beep(1175, 0.3, 'sine', 0.06, 0.08); },
 };
 const sndBtn = $('#snd');
 const paintSnd = () => sndBtn.textContent = soundOn ? '🔊' : '🔇';
@@ -160,13 +202,19 @@ function buildPlayer(sv = save || freshSave()) {
    ========================================================= */
 const RW = new THREE.Group(); scene.add(RW);
 const LANES = [-3.2, 0, 3.2];
-const roadTex = canvasTex(256, 256, (x, w, h) => {
+const roadTex = canvasTex(512, 512, (x, w, h) => {
   x.fillStyle = '#c9763a'; x.fillRect(0, 0, w, h);
-  const a0 = w / 12, a1 = w * 11 / 12; x.fillStyle = '#4a4f5c'; x.fillRect(a0, 0, a1 - a0, h);
-  for (let i = 0; i < 600; i++) { x.fillStyle = Math.random() < 0.5 ? 'rgba(255,255,255,.05)' : 'rgba(0,0,0,.08)'; x.fillRect(a0 + Math.random() * (a1 - a0), Math.random() * h, 2, 2); }
-  x.fillStyle = 'rgba(0,0,0,.16)'; for (const lx of [-3.2, 0, 3.2]) x.fillRect((lx + 6) / 12 * w - 10, 0, 20, h);
-  x.fillStyle = '#ffd23f'; x.fillRect(a0 + 4, 0, 5, h); x.fillRect(a1 - 9, 0, 5, h);
-  x.fillStyle = '#ffffff'; for (const lx of [-1.6, 1.6]) x.fillRect((lx + 6) / 12 * w - 3, 0, 6, h * 0.5);
+  const a0 = w / 12, a1 = w * 11 / 12;
+  const gr = x.createLinearGradient(a0, 0, a1, 0); gr.addColorStop(0, '#454a56'); gr.addColorStop(0.5, '#50566282'.slice(0, 7)); gr.addColorStop(1, '#454a56');
+  x.fillStyle = gr; x.fillRect(a0, 0, a1 - a0, h);
+  for (let i = 0; i < 4200; i++) { const v = Math.random(); x.fillStyle = v < 0.45 ? 'rgba(255,255,255,.06)' : v < 0.9 ? 'rgba(0,0,0,.09)' : 'rgba(255,230,180,.08)'; const s = Math.random() < 0.85 ? 2 : 3; x.fillRect(a0 + Math.random() * (a1 - a0), Math.random() * h, s, s); }
+  for (let i = 0; i < 5; i++) { x.fillStyle = 'rgba(30,32,38,.35)'; const px = a0 + Math.random() * (a1 - a0 - 70), py = Math.random() * h; x.beginPath(); x.roundRect(px, py, 40 + Math.random() * 50, 30 + Math.random() * 60, 8); x.fill(); }
+  x.strokeStyle = 'rgba(20,20,25,.45)'; x.lineWidth = 1.5;
+  for (let i = 0; i < 6; i++) { let cx = a0 + Math.random() * (a1 - a0), cy = Math.random() * h; x.beginPath(); x.moveTo(cx, cy); for (let k = 0; k < 6; k++) { cx += (Math.random() - 0.5) * 22; cy += 6 + Math.random() * 12; x.lineTo(cx, cy); } x.stroke(); }
+  x.fillStyle = 'rgba(0,0,0,.13)'; for (const lx of [-3.2, 0, 3.2]) { x.fillRect((lx + 6) / 12 * w - 26, 0, 14, h); x.fillRect((lx + 6) / 12 * w + 12, 0, 14, h); }
+  x.fillStyle = '#ffd23f'; x.fillRect(a0 + 8, 0, 9, h); x.fillRect(a1 - 17, 0, 9, h);
+  x.fillStyle = 'rgba(0,0,0,.25)'; x.fillRect(a0, 0, 5, h); x.fillRect(a1 - 5, 0, 5, h);
+  for (const lx of [-1.6, 1.6]) { const cx = (lx + 6) / 12 * w; x.fillStyle = '#f4f4ee'; x.fillRect(cx - 6, 0, 12, h * 0.5); x.fillStyle = 'rgba(80,86,98,.55)'; for (let k = 0; k < 40; k++) x.fillRect(cx - 6 + Math.random() * 12, Math.random() * h * 0.5, 2 + Math.random() * 3, 2 + Math.random() * 4); }
 }, true);
 roadTex.repeat.set(1, 40);
 const grassTex = canvasTex(128, 128, (x, w, h) => { x.fillStyle = '#69c13f'; x.fillRect(0, 0, w, h); for (let i = 0; i < 160; i++) { x.fillStyle = pick(['#7fd34c', '#5aaa36', '#8fdc5a', '#c9a05a']); x.fillRect(Math.random() * w, Math.random() * h, 3, 5); } }, true);
@@ -177,7 +225,16 @@ grassTex.repeat.set(60, 60);
   const ground = new THREE.Mesh(new THREE.PlaneGeometry(600, 600), toon('#ffffff', { map: grassTex })); ground.rotation.x = -Math.PI / 2; ground.position.set(0, -0.02, -150); ground.receiveShadow = true; RW.add(ground);
   RW.add(mergedMesh([P(G.box, '#eceff1', -6.5, 0.45, -140, 0, 0, 0, 0.7, 0.9, 320), P(G.box, '#ffd23f', -6.5, 0.93, -140, 0, 0, 0, 0.74, 0.08, 320)], 0.04, false));
 }
-const palms = new THREE.InstancedMesh(palmGeo(), VC, 70); outline(palms, 0.06); RW.add(palms);
+function swayInst(geo, n, th) { const [m, o] = swayMats(th); const im = new THREE.InstancedMesh(geo, m, n); outline(im, th); im.children[0].material = o; return im; }
+const kerbTex = canvasTex(64, 64, (x, w, h) => { x.fillStyle = '#e53935'; x.fillRect(0, 0, w, h / 2); x.fillStyle = '#f5f5f5'; x.fillRect(0, h / 2, w, h / 2); x.fillStyle = 'rgba(0,0,0,.12)'; x.fillRect(0, h - 6, w, 6); }, true);
+kerbTex.repeat.set(1, 110);
+for (const kx of [6.15, -6.15]) { const k = new THREE.Mesh(new THREE.BoxGeometry(0.42, 0.22, 320), toon('#ffffff', { map: kerbTex })); k.position.set(kx, 0.11, -140); k.receiveShadow = true; RW.add(k); }
+const BLOB = canvasTex(64, 64, (x, w) => { const g = x.createRadialGradient(32, 32, 2, 32, 32, 32); g.addColorStop(0, 'rgba(0,0,0,.55)'); g.addColorStop(0.55, 'rgba(0,0,0,.28)'); g.addColorStop(1, 'rgba(0,0,0,0)'); x.fillStyle = g; x.fillRect(0, 0, w, w); });
+const blobMat = new THREE.MeshBasicMaterial({ map: BLOB, transparent: true, depthWrite: false, fog: false });
+const blobGeo = new THREE.PlaneGeometry(1, 1).rotateX(-Math.PI / 2);
+function addBlob(obj, w, l) { const b = new THREE.Mesh(blobGeo, blobMat); b.scale.set(w, 1, l); b.position.y = 0.03; b.renderOrder = 1; obj.add(b); return b; }
+const blobP = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), blobMat); blobP.rotation.x = -Math.PI / 2; blobP.renderOrder = 1; scene.add(blobP);
+const palms = swayInst(palmGeo(), 70, 0.06); RW.add(palms);
 const palmData = [];
 for (let i = 0; i < 70; i++) { const right = i % 3 !== 0; palmData.push({ x: right ? (Math.random() < 0.6 ? rand(7.5, 12) : rand(26, 60)) : rand(-21, -60), z: rand(-300, 25), s: rand(0.8, 1.25), r: rand(0, 6.28) }); }
 const lamps = new THREE.InstancedMesh(streetLightGeo(), VC, 11); outline(lamps, 0.05); RW.add(lamps);
@@ -229,7 +286,8 @@ const gateLanes = LANES.map((lx, i) => {
   const tex = new THREE.CanvasTexture(cv); tex.colorSpace = THREE.SRGBColorSpace; tex.anisotropy = 4;
   const panel = new THREE.Mesh(new THREE.PlaneGeometry(3.0, 1.03), new THREE.MeshBasicMaterial({ map: tex, transparent: true, toneMapped: false, fog: false }));
   panel.position.y = 4.15;
-  g.add(frame, curtain, panel); answerGate.add(g);
+  const glow = new THREE.Sprite(new THREE.SpriteMaterial({ map: SOFT, color: GATE_COLS[i], transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, opacity: 0.8, fog: false })); glow.scale.set(5.2, 5.2, 1); glow.position.y = 2.2;
+  g.add(glow, frame, curtain, panel); answerGate.add(g);
   return { g, curtain, lab: { cv, tex }, panel };
 });
 const gateDist = i => stopDist(i) - 14;
@@ -245,6 +303,27 @@ for (let i = 0; i < 3; i++) {
 }
 function hideScrolls() { scrolls.forEach(s => { s.on = false; s.obj.visible = false; }); }
 
+/* ---- power-ups (Biblically framed) ---- */
+const POWERS = {
+  fire: { icon: '🔥', name: 'Holy Ghost Fire', ref: 'Acts 2:3', dur: 5, col: [1, 0.5, 0.15], line: 'cloven tongues like as of fire' },
+  shield: { icon: '🛡️', name: 'Shield of Faith', ref: 'Ephesians 6:16', dur: 20, col: [0.4, 0.8, 1], line: 'quench all the fiery darts' },
+  lamp: { icon: '🏮', name: 'Lamp unto my feet', ref: 'Psalm 119:105', dur: 8, col: [1, 0.85, 0.35], line: 'Thy word is a lamp unto my feet' },
+};
+const powerUps = Object.keys(POWERS).map(k => {
+  const g = new THREE.Group(); const ic = textSprite(POWERS[k].icon, 1.5); ic.material.depthTest = true; ic.renderOrder = 0;
+  const ring = new THREE.Mesh(new THREE.TorusGeometry(0.95, 0.09, 8, 28), new THREE.MeshBasicMaterial({ color: new THREE.Color(...POWERS[k].col), toneMapped: false }));
+  const pg = new THREE.Sprite(new THREE.SpriteMaterial({ map: SOFT, color: new THREE.Color(...POWERS[k].col), transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, fog: false })); pg.scale.set(4, 4, 1);
+  g.add(pg, ic, ring); g.visible = false; RW.add(g); return { k, g, ring, on: false, lane: 1 };
+});
+const shieldBubble = new THREE.Mesh(new THREE.SphereGeometry(1.45, 20, 14), new THREE.MeshBasicMaterial({ color: 0x66ccff, transparent: true, opacity: 0.18, depthWrite: false, blending: THREE.AdditiveBlending }));
+shieldBubble.visible = false; scene.add(shieldBubble);
+const FALL_VERSES = [
+  ['For a just man falleth seven times, and riseth up again: but the wicked shall fall into mischief.', 'Proverbs 24:16'],
+  ['Rejoice not against me, O mine enemy: when I fall, I shall arise; when I sit in darkness, the LORD shall be a light unto me.', 'Micah 7:8'],
+  ['Though he fall, he shall not be utterly cast down: for the LORD upholdeth him with his hand.', 'Psalm 37:24'],
+  ['Persecuted, but not forsaken; cast down, but not destroyed.', '2 Corinthians 4:9'],
+];
+
 const OBS = {
   pothole: { make: pothole, rel: 1, jump: true, len: 1.6 },
   cone: { make: cones, rel: 1, jump: true, len: 0.9 },
@@ -257,7 +336,7 @@ const freeObs = {}, active = [];
 function spawnObs(type, lane, z) {
   freeObs[type] = freeObs[type] || [];
   let obj = freeObs[type].pop();
-  if (!obj) { obj = OBS[type].make(); if (type !== 'pothole') obj.traverse(o => { if (o.isMesh && !o.userData.outline) o.castShadow = true; }); }
+  if (!obj) { obj = OBS[type].make(); if (type !== 'pothole') { obj.traverse(o => { if (o.isMesh && !o.userData.outline) o.castShadow = true; }); const L = OBS[type].len; addBlob(obj, type === 'cone' ? 1.6 : type === 'hawker' ? 1.3 : 2.9, Math.max(1.4, L * 1.15)); } }
   obj.position.set(LANES[lane], 0, z); RW.add(obj);
   active.push({ type, lane, obj, hit: false, ex: 0, ...OBS[type] });
 }
@@ -276,16 +355,18 @@ function moveProps(move) {
   writeInst(palms, palmData); writeInst(lamps, lampData);
   for (const r of roadside) { r.obj.position.z += move; if (r.obj.position.z > 30) r.obj.position.z -= r.span; }
   for (const h of walkers) { h.root.position.z += move * 1.05; if (h.root.position.z > 25) h.root.position.z -= 300; }
-  roadTex.offset.y += move / 8; grassTex.offset.y += move / 10;
+  roadTex.offset.y += move / 8; grassTex.offset.y += move / 10; kerbTex.offset.y += move * 110 / 320;
 }
 function startRun() {
+  fadeFlash();
   S.mode = 'run'; S.paused = false;
   RW.visible = true; CW.visible = false; scene.add(player.root); player.root.visible = true; player.root.position.set(0, 0, 0); player.root.rotation.set(0, Math.PI, 0);
   clearObs(); orbs.forEach(o => o.on = false); fx.clear();
-  R = { dist: 0, t: 0, speed: 11, lane: 1, px: 0, camX: 0, py: 0, jt: 0, inv: 0, shake: 0, nextRow: 30, stopIdx: 0, moralIdx: 0, dustT: 0, ev: S.plan.event, gate: null, vGot: 0, nextScrollD: 70, autoT: 0, flash: 0, signFlash: null };
+  R = { combo: 0, comboT: 0, fire: 0, shield: false, shieldT: 0, magnet: 0, stumble: 0, lastStumble: -99, dark: 0, revived: false, nextPowerD: 240, popT: 0, dist: 0, t: 0, speed: 11, lane: 1, px: 0, camX: 0, py: 0, jt: 0, inv: 0, shake: 0, nextRow: 30, stopIdx: 0, moralIdx: 0, dustT: 0, ev: S.plan.event, gate: null, vGot: 0, nextScrollD: 70, autoT: 0, flash: 0, signFlash: null };
   R.scrollGap = (RUN_LEN - 260) / (S.plan.verse.parts.length + 2.5);
   hideScrolls(); answerGate.visible = false; $('#hQ').classList.add('hidden');
-  hudMode('run'); verseHUD();
+  R.cp0 = R.cp = snapCP(0, 0, 'Ojota (the start)');
+  hudMode('run'); verseHUD(); powerHUD();
   toast('Swipe ⬅️ ➡️ to change lane · Swipe ⬆️ or tap to jump · Grab 📜 scrolls!', 3400);
 }
 const JT = 0.66;
@@ -327,7 +408,11 @@ function setMoralNPC(m) {
 const MORAL_AFTER = [2, 6];
 function updateRun(dt) {
   const ch = save.chapter, ev = R.ev;
-  R.t += dt; R.speed = runSpeed(); if (AUTO) autoSteer(dt);
+  R.t += dt;
+  if (R.stumble > 0) R.stumble -= dt;
+  R.speed = runSpeed() * (R.stumble > 0 ? 1 - 0.5 * (R.stumble / 0.9) : 1) * (R.fire > 0 ? 1.35 : 1);
+  if (AUTO) autoSteer(dt);
+  updatePowers(dt);
   const move = R.speed * dt; R.dist += move;
   moveProps(move);
   for (const v of oncoming) { v.position.z += move + 18 * dt; if (v.position.z > 30) { v.position.z = -300 - rand(0, 60); v.position.x = Math.random() < 0.5 ? -10.6 : -15.2; } }
@@ -340,6 +425,7 @@ function updateRun(dt) {
   player.root.rotation.z = (R.px - LANES[R.lane]) * 0.08;
   player.root.visible = !(R.inv > 0 && Math.floor(S.t * 14) % 2 === 0);
   poseHuman(player, R.py > 0.05 ? 'jump' : 'run', dt, R.speed / 14);
+  if (R.stumble > 0.4) player.root.rotation.x = Math.sin((0.9 - R.stumble) * 9) * 0.35; else player.root.rotation.x = 0;
   R.dustT -= dt; if (R.dustT <= 0 && R.py < 0.05) { R.dustT = 0.05; fx.emit(R.px + rand(-0.2, 0.2), 0.12, 0.35, rand(-0.6, 0.6), rand(0.4, 1.0), rand(0.5, 1.5), 0.55, 0.45, '#e6c9a0', 2.2); }
   if (ev.mod.rain) for (let i = 0; i < 3; i++) fx.emit(R.px + rand(-14, 14), rand(8, 14), rand(-30, 4), 0, -26, 0, 0.5, 0.18, '#cfe8ff', 0);
   const nextStop = stopDist(R.stopIdx), moral = S.plan.road[R.moralIdx];
@@ -358,11 +444,15 @@ function updateRun(dt) {
     if (a.type === 'okada') a.obj.position.x = LANES[a.lane] + Math.sin(S.t * 2 + i) * 0.25;
     if (a.type === 'hawker') poseHuman(a.obj.userData.human, 'carry', dt, 0.6);
     if (a.obj.userData.exhaust && (a.ex -= dt) <= 0) { a.ex = 0.07; const e = a.obj.userData.exhaust; fx.emit(a.obj.position.x + e[0], e[1], a.obj.position.z + e[2], rand(-0.3, 0.3), rand(0.6, 1.2), 1.5, 0.9, 0.55, '#8d8d8d', 2.5); }
-    const z = a.obj.position.z;
-    if (!a.hit && Math.abs(z) < a.len / 2 + 0.45 && Math.abs(a.obj.position.x - px) < 1.4 && !(a.jump && air) && R.inv <= 0) {
-      a.hit = true; S.hits++; S.score = Math.max(0, S.score - 20); addLantern(-7); R.inv = 1.1; R.shake = 0.35; sfx.hit(); if (!a.jump) sfx.horn();
-      for (let k = 0; k < 14; k++) fx.emit(px + rand(-0.6, 0.6), rand(0.3, 1.5), rand(-0.5, 0.5), rand(-3, 3), rand(1, 3), rand(-2, 2), 0.7, 0.8, '#d9b38c', 2);
-      toast(pick(['Ouch! Pothole wahala 😅', 'Watch out, pilgrim!', 'Your lantern flickered!', 'Eyes on the road!', 'Danfo no dey brake o!']), 1100);
+    if (a.fly) { a.obj.position.y += a.fly * dt; a.fly -= 22 * dt; a.obj.rotation.x += dt * 7; a.obj.position.x += a.fx * dt; if (a.obj.position.y < -3) a.obj.position.z = 99; }
+    const z = a.obj.position.z, dx = Math.abs(a.obj.position.x - px);
+    if (!a.hit && Math.abs(z) < a.len / 2 + 0.45 && dx < 1.4 && !(a.jump && air) && (R.inv <= 0 || R.fire > 0)) {
+      a.hit = true;
+      if (onHit(a)) return;
+    }
+    if (!a.hit && !a.nm && z > -0.3 && z < a.len / 2 + 0.6) {
+      if (!a.jump && a.type !== 'hawker' && dx > 1.6 && dx < 3.9 && R.py < 0.8) { a.nm = true; nearMiss('😮 Close one!', 15); }
+      else if (a.jump && dx < 1.4 && air) { a.nm = true; nearMiss('🦘 Leap of faith!', 10); }
     }
     if (z > 22) { RW.remove(a.obj); freeObs[a.type].push(a.obj); active.splice(i, 1); }
   }
@@ -370,15 +460,16 @@ function updateRun(dt) {
   orbs.forEach((o, i) => {
     if (o.on) {
       o.z += move;
+      if (R.magnet > 0 && o.z > -22 && o.z < 0.5) { o.x += (px - o.x) * Math.min(1, dt * 7); o.y += (R.py + 1 - o.y) * Math.min(1, dt * 7); }
       if (Math.abs(o.z) < 1.0 && Math.abs(o.x - px) < 1.3 && Math.abs(o.y - (R.py + 1.0)) < 1.3) {
-        o.on = false; S.orbs++; S.score += 10; addLantern(1.2); sfx.orb();
+        o.on = false; S.orbs++; addCombo(1); S.score += 10 * comboMult(); addLantern(1.2); sfx.orb(); scorePop();
         for (let k = 0; k < 6; k++) fx.emit(o.x, o.y, o.z, rand(-2, 2), rand(0, 3), rand(-1, 1), 0.5, 0.35, '#fff3a0', 0.5);
       }
       if (o.z > 15) o.on = false;
     }
     const s = o.on ? 1 + Math.sin(S.t * 6 + i) * 0.1 : 0;
     _q.setFromAxisAngle(_up, S.t * 2 + i); _mtx.compose(_pv.set(o.x, o.y + Math.sin(S.t * 4 + i) * 0.12, o.z), _q, _sv.setScalar(s)); orbMesh.setMatrixAt(i, _mtx);
-    if (o.on && hi < halos.n - 1) { halos.pos.set([o.x, o.y, o.z], hi * 3); halos.col.set([1, 0.85, 0.3], hi * 3); halos.size[hi] = 2.2; halos.alpha[hi] = 0.8; hi++; }
+    if (o.on && hi < halos.n - 1) { halos.pos.set([o.x, o.y, o.z], hi * 3); halos.col.set([1, 0.82, 0.3], hi * 3); halos.size[hi] = 2.8; halos.alpha[hi] = 0.85; hi++; }
   });
   orbMesh.instanceMatrix.needsUpdate = true;
   // verse scrolls
@@ -391,7 +482,7 @@ function updateRun(dt) {
   }
   for (const sc of scrolls) {
     if (!sc.on) continue;
-    sc.obj.position.z += move; sc.obj.rotation.y = Math.sin(S.t * 2) * 0.5; sc.obj.position.y = 1.3 + Math.sin(S.t * 4) * 0.15;
+    sc.obj.position.z += move; if (R.magnet > 0 && sc.obj.position.z > -24) sc.obj.position.x += (px - sc.obj.position.x) * Math.min(1, dt * 6); sc.obj.rotation.y = Math.sin(S.t * 2) * 0.5; sc.obj.position.y = 1.3 + Math.sin(S.t * 4) * 0.15;
     if (hi < halos.n - 1) { halos.pos.set([sc.obj.position.x, sc.obj.position.y, sc.obj.position.z], hi * 3); halos.col.set([1, 0.95, 0.6], hi * 3); halos.size[hi] = 3.4; halos.alpha[hi] = 0.9; hi++; }
     if (Math.abs(sc.obj.position.z) < 1.2 && Math.abs(sc.obj.position.x - px) < 1.4 && R.py < 1.8) {
       sc.on = false; sc.obj.visible = false; R.vGot++; S.score += 25; addLantern(2); sfx.orb(); setTimeout(() => sfx.orb(), 90);
@@ -430,6 +521,9 @@ function updateRun(dt) {
   R.camX += (R.px - R.camX) * Math.min(1, dt * 7);
   camera.position.set(R.camX + rand(-sh, sh), 3.3 + R.py * 0.3 + rand(-sh, sh), 7.6);
   camera.lookAt(R.camX, 1.25 + R.py * 0.2, -9);
+  const tf = R.fire > 0 ? 72 : 62 + Math.max(0, R.speed - 17) * 0.45;
+  if (Math.abs(camera.fov - tf) > 0.05) { camera.fov += (tf - camera.fov) * Math.min(1, dt * 3); camera.updateProjectionMatrix(); }
+  speedFX(dt);
   sunFollow(R.px, 0);
   fx.update(dt, R.speed, 0);
   if (moral && R.dist >= moralD - 1) {
@@ -461,7 +555,7 @@ function sunFollow(x, z) {
 
 /* ---- HUD ---- */
 let hudT = 0;
-function hudMode(m) { document.body.classList.toggle('inrun', m === 'run'); $('#hud').classList.toggle('hidden', !m); $('#prompt').classList.add('hidden'); $('#hVerse').classList.toggle('hidden', m !== 'run'); $('#hQ').classList.add('hidden'); }
+function hudMode(m) { document.body.classList.toggle('inrun', m === 'run'); if (m !== 'run') { $('#darkV').style.opacity = 0; $('#speedLines').style.opacity = 0; $('#hCombo').classList.add('hidden'); $('#hPow').classList.add('hidden'); shieldBubble.visible = false; if (camera.fov !== 62) { camera.fov = 62; camera.updateProjectionMatrix(); } } $('#hud').classList.toggle('hidden', !m); $('#prompt').classList.add('hidden'); $('#hVerse').classList.toggle('hidden', m !== 'run'); $('#hQ').classList.add('hidden'); }
 function hud(prog, info) {
   if ((hudT -= 1) > 0) return; hudT = 6;
   $('#hLant').style.width = S.lantern + '%'; $('#hFloor').style.left = S.floor + '%';
@@ -476,11 +570,148 @@ function hud(prog, info) {
 
 /* ---- quiz, gate ---- */
 function settleRunner() {
+  if (camera.fov !== 62) { camera.fov = 62; camera.updateProjectionMatrix(); } player.root.rotation.x = 0;
   R.jt = 0; R.py = 0; R.px = LANES[R.lane]; R.camX = R.px; R.inv = 0;
   player.root.position.set(R.px, 0, 0); player.root.rotation.z = 0; player.root.visible = true; poseHuman(player, 'idle', 0.016);
   // lift the view so the runner sits above the dialog sheet while paused
   camera.position.set(R.camX, 3.0, 7.6); camera.lookAt(R.camX, -1.9, -9);
 }
+const comboMult = () => 1 + Math.min(4, Math.floor(R.combo / 8));
+function addCombo(n) {
+  const before = comboMult(); R.combo += n; R.comboT = 2.8;
+  if (comboMult() > before) { popText(`🔥 Combo x${comboMult()}!`, 'big'); sfx.stop(); }
+  comboHUD();
+}
+function loseCombo() { if (R.combo >= 8) popText('Combo lost', 'dim'); R.combo = 0; R.comboT = 0; comboHUD(); }
+function comboHUD() { const el = $('#hCombo'); if (R.combo >= 3) { el.classList.remove('hidden'); el.textContent = `x${comboMult()} · ${R.combo}`; el.classList.remove('pop'); void el.offsetWidth; el.classList.add('pop'); } else el.classList.add('hidden'); }
+function nearMiss(txt, pts) { const p = pts * comboMult(); S.score += p; addCombo(2); popText(`${txt} +${p}`); sfx.whoosh(); scorePop(); }
+function popText(txt, cls = '') {
+  const el = document.createElement('div'); el.className = 'popt ' + cls; el.textContent = txt;
+  el.style.left = (50 + rand(-12, 12)) + '%'; $('#pops').appendChild(el); setTimeout(() => el.remove(), 1100);
+}
+function scorePop() { const el = $('#hScore'); el.classList.remove('bump'); void el.offsetWidth; el.classList.add('bump'); }
+function shakeDOM(big) { const c = $('#c3d'); c.classList.remove('shake', 'shake2'); void c.offsetWidth; c.classList.add(big ? 'shake2' : 'shake'); }
+function snapCP(dist, stopIdx, name) { return { dist, stopIdx, name, vGot: R.vGot, S: { score: S.score, orbs: S.orbs, quizRight: S.quizRight, quizTotal: S.quizTotal, lantern: S.lantern, hits: S.hits } }; }
+function knock(a) { a.fly = 9; a.fx = (a.obj.position.x - R.px >= 0 ? 1 : -1) * 6; }
+const BIG_NAMES = { danfo: 'A danfo no gree brake!', truck: 'Trailer wahala!', okada: 'An okada swerved into you!' };
+function onHit(a) {
+  const big = !a.jump && a.type !== 'hawker';
+  if (R.fire > 0) { knock(a); S.score += 20; popText('🔥 Smashed through! +20'); sfx.hit(); for (let k = 0; k < 14; k++) fx.emit(R.px + rand(-1, 1), rand(0.5, 2), -1, rand(-4, 4), rand(1, 4), rand(-3, 0), 0.6, 0.7, '#ff8a3d', 1); return false; }
+  if (R.shield) {
+    R.shield = false; R.inv = 1.2; knock(a); sfx.shield(); shakeDOM();
+    for (let k = 0; k < 22; k++) fx.emit(R.px, 1.2, 0, rand(-4, 4), rand(-1, 4), rand(-3, 3), 0.6, 0.6, '#9be7ff', 0.5);
+    popText('🛡️ The Shield of Faith held!', 'big'); powerHUD(); return false;
+  }
+  for (let k = 0; k < 16; k++) fx.emit(R.px + rand(-0.6, 0.6), rand(0.3, 1.5), rand(-0.5, 0.5), rand(-3, 3), rand(1, 3), rand(-2, 2), 0.7, 0.8, '#d9b38c', 2);
+  if (big || R.t - R.lastStumble < 4) { crash(big ? BIG_NAMES[a.type] : 'You stumbled twice and the darkness caught up.'); return true; }
+  R.lastStumble = R.t; R.stumble = 0.9; R.inv = 1.0; R.shake = 0.45; R.dark = 4; S.hits++;
+  loseCombo(); S.score = Math.max(0, S.score - 30); addLantern(-6); sfx.hit(); shakeDOM();
+  popText('Stumbled! −30', 'bad');
+  toast(pick(['☁️ The darkness is right behind you. Steady now!', '☁️ Stumbled! One more and the darkness catches you.', '☁️ Watch your step, pilgrim. Don\'t stumble again!']), 1600);
+  return false;
+}
+function updatePowers(dt) {
+  if (R.comboT > 0) { R.comboT -= dt; if (R.comboT <= 0 && R.combo) { R.combo = 0; comboHUD(); } }
+  if (R.fire > 0) { R.fire -= dt; R.inv = Math.max(R.inv, 0.05); for (let k = 0; k < 3; k++) fx.emit(R.px + rand(-0.4, 0.4), rand(0.2, 1.8), rand(0.2, 1.2), rand(-0.6, 0.6), rand(1.5, 3), rand(1, 4), 0.45, 0.55, pick(['#ff5722', '#ffb300', '#ffd54f']), 1.6); if (R.fire <= 0) { R.inv = 0.8; powerHUD(); } }
+  if (R.magnet > 0) { R.magnet -= dt; if (R.magnet <= 0) powerHUD(); }
+  if (R.shield) { R.shieldT -= dt; if (R.shieldT <= 0) { R.shield = false; powerHUD(); } }
+  shieldBubble.visible = R.shield; if (R.shield) { shieldBubble.position.set(R.px, R.py + 1.2, 0); shieldBubble.material.opacity = 0.14 + 0.06 * Math.sin(S.t * 6); }
+  if (R.dark > 0) { R.dark -= dt; for (let k = 0; k < 2; k++) fx.emit(R.px + rand(-5, 5), rand(0, 3), rand(2.5, 5), rand(-0.5, 0.5), rand(0, 0.6), rand(-2, -0.5), 0.9, 1.6, pick(['#2b2140', '#1d1830', '#3a2d55']), 1.4); }
+  const dv = $('#darkV'), dk = R.dark > 0 ? Math.min(1, R.dark / 1.2) : 0; dv.style.opacity = dk.toFixed(2);
+  if ((R.popT -= dt) <= 0) { R.popT = 0.25; powerHUD(true); }
+  // spawn power-ups now and then
+  if (R.dist >= R.nextPowerD && !inGateZone(R.dist - SPAWN_Z) && R.dist - SPAWN_Z < RUN_LEN - 60) {
+    const k = pick(['shield', 'shield', 'lamp', 'lamp', 'fire']), pu = powerUps.find(p => p.k === k);
+    const lanes = shuffle([0, 1, 2]).filter(l => !active.some(a => a.lane === l && Math.abs(a.obj.position.z - SPAWN_Z) < 14));
+    if (pu && !pu.on && lanes.length) { pu.on = true; pu.lane = lanes[0]; pu.g.visible = true; pu.g.position.set(LANES[pu.lane], 1.5, SPAWN_Z); R.nextPowerD = R.dist + rand(280, 400); }
+    else R.nextPowerD = R.dist + 10;
+  }
+  for (const pu of powerUps) {
+    if (!pu.on) continue;
+    pu.g.position.z += R.speed * dt; pu.ring.rotation.y += dt * 3; pu.g.position.y = 1.5 + Math.sin(S.t * 3) * 0.2;
+    if (Math.abs(pu.g.position.z) < 1.2 && Math.abs(pu.g.position.x - R.px) < 1.4 && R.py < 2) { pu.on = false; pu.g.visible = false; activatePower(pu.k); }
+    if (pu.g.position.z > 15) { pu.on = false; pu.g.visible = false; }
+  }
+}
+function activatePower(k) {
+  const P0 = POWERS[k]; sfx.power(); scorePop();
+  if (k === 'fire') { R.fire = P0.dur; R.dark = 0; }
+  if (k === 'shield') { R.shield = true; R.shieldT = P0.dur; }
+  if (k === 'lamp') R.magnet = P0.dur;
+  for (let i = 0; i < 26; i++) fx.emit(R.px, 1.4, 0, rand(-4, 4), rand(0, 5), rand(-3, 3), 0.7, 0.6, k === 'fire' ? '#ffb300' : k === 'shield' ? '#9be7ff' : '#fff3a0', 0.6);
+  popText(`${P0.icon} ${P0.name}!`, 'big');
+  toast(`${P0.icon} ${P0.name} · “${P0.line}” (${P0.ref})`, 2200);
+  powerHUD();
+}
+function powerHUD(tickOnly) {
+  const el = $('#hPow'); if (!R) return;
+  const act = R.fire > 0 ? ['fire', R.fire] : R.magnet > 0 ? ['lamp', R.magnet] : R.shield ? ['shield', R.shieldT] : null;
+  if (!act) { el.classList.add('hidden'); return; }
+  const P0 = POWERS[act[0]], pct = Math.max(0, act[1] / P0.dur * 100);
+  if (!tickOnly || el.classList.contains('hidden') || el.dataset.k !== act[0]) { el.dataset.k = act[0]; el.innerHTML = `${P0.icon} <span>${P0.name}${R.shield && act[0] !== 'shield' ? ' + 🛡️' : ''}</span><i><b></b></i>`; el.classList.remove('hidden'); }
+  el.querySelector('b').style.width = pct.toFixed(0) + '%';
+}
+function speedFX() {
+  const k = R.fire > 0 ? 1 : clamp((R.speed - 17) / 9, 0, 0.75);
+  const sl = $('#speedLines'); sl.style.opacity = k.toFixed(2); sl.classList.toggle('fire', R.fire > 0);
+}
+function crash(cause) {
+  settleRunner(); S.paused = true; sfx.crash(); shakeDOM(true); loseCombo();
+  R.fire = 0; R.magnet = 0; R.shield = false; R.dark = 0; shieldBubble.visible = false; $('#darkV').style.opacity = 0; $('#speedLines').style.opacity = 0; $('#hQ').classList.add('hidden'); powerHUD();
+  player.root.rotation.x = -0.5; player.root.position.y = 0;
+  setTimeout(() => showFallen(cause), 450);
+}
+function showFallen(cause) {
+  const v = pick(FALL_VERSES), m = $('#modalBody'), cp = R.cp, cost = 200;
+  $('#toast').classList.remove('show');
+  const metres = Math.round(R.dist * 1.5);
+  m.innerHTML = `<div class="banner dark"><div class="km">${esc(cause)}</div><div class="name">FALLEN, BUT NOT FORSAKEN</div></div>
+    ${verseHTML(v)}
+    <div class="chips"><span class="chip">✨ ${S.score} light</span><span class="chip">📏 ${metres} m</span><span class="chip">📍 ${esc(C.STOPS[Math.min(R.stopIdx, C.STOPS.length - 1)])} next</span><span class="chip">📖 ${S.quizRight}/${S.quizTotal} gates</span></div>
+    ${!R.revived ? `<p class="small" style="margin:4px 0">You can <b>rise again</b> once per run:</p>
+      <button class="btn green" id="riseQ">🙏 Rise again · answer a Bible question</button>
+      <button class="btn primary" id="riseL" ${S.score < cost ? 'disabled' : ''}>✨ Rise again · spend ${cost} light${S.score < cost ? ' (not enough yet)' : ''}</button>` : '<p class="small">You have already risen once this run.</p>'}
+    ${cp.stopIdx > 0 ? `<button class="btn" id="rCP">↩ Restart from ${esc(cp.name)} bus stop</button>` : ''}
+    <button class="btn ghost" id="rStart">🔁 Restart from Ojota</button>`;
+  show('modal'); m.scrollTop = 0;
+  if (!R.revived) {
+    $('#riseQ').onclick = () => { sfx.tap(); riseQuestion(); };
+    $('#riseL').onclick = () => { if (S.score < cost) return; S.score -= cost; sfx.good(); revive('✨ You spent 200 light and rose again!'); };
+  }
+  if ($('#rCP')) $('#rCP').onclick = () => { sfx.tap(); restartFrom(R.cp); };
+  $('#rStart').onclick = () => { sfx.tap(); R.revived = false; restartFrom(R.cp0); };
+}
+function riseQuestion() {
+  const used = new Set(S.plan.quiz.map(q => q[0])), pool = C.GATE_Q.filter(q => !used.has(q[0]));
+  const q = pick(pool.length ? pool : C.GATE_Q), order = shuffle(q[1].map((t, i) => ({ t, ok: i === q[2] })));
+  R.riseOk = order.findIndex(o => o.ok);
+  const m = $('#modalBody');
+  m.innerHTML = `<div class="banner dark"><div class="km">ANSWER TO RISE AGAIN</div><div class="name">🙏 ONE QUESTION</div></div>
+    <div class="q">${esc(q[0])}</div>${order.map((o, i) => `<button class="btn opt" data-i="${i}">${esc(o.t)}</button>`).join('')}<div class="fb" id="rfb"></div><div id="rnext"></div>`;
+  m.scrollTop = 0;
+  const btns = m.querySelectorAll('[data-i]');
+  btns.forEach(b => b.addEventListener('click', () => {
+    const ok = order[+b.dataset.i].ok;
+    btns.forEach((bb, i) => { bb.disabled = true; if (order[i].ok) bb.classList.add('right'); });
+    if (ok) { sfx.good(); $('#rfb').innerHTML = `✅ <b>Correct!</b> ${esc(q[3] || '')}`; $('#rnext').innerHTML = '<button class="btn primary" id="rgo">Rise again ▶</button>'; $('#rgo').onclick = () => revive('🙏 “When I fall, I shall arise” (Micah 7:8)'); }
+    else { b.classList.add('wrong'); sfx.soft(); R.revived = true; $('#rfb').innerHTML = `💛 Not this time. ${esc(q[3] || '')}`; $('#rnext').innerHTML = '<button class="btn primary" id="rback">Choose where to restart</button>'; $('#rback').onclick = () => showFallen('Keep going, pilgrim. Grace gives another start.'); }
+  }));
+}
+function revive(msg) {
+  R.revived = true; hide('modal'); S.paused = false; player.root.rotation.x = 0;
+  R.inv = 2.2; R.stumble = 0; R.dark = 0; R.lastStumble = -99; R.t = Math.min(R.t, 2);
+  clearObs(a => a.obj.position.z > -40);
+  toast(msg, 2200); sfx.power();
+}
+function restartFrom(cp) {
+  hide('modal'); fadeFlash();
+  Object.assign(S, cp.S); S.lantern = Math.max(S.lantern, S.floor);
+  Object.assign(R, { dist: cp.dist, stopIdx: cp.stopIdx, vGot: cp.vGot, nextScrollD: cp.dist + 40, nextPowerD: cp.dist + 120, gate: null, t: 0, combo: 0, comboT: 0, fire: 0, magnet: 0, shield: false, stumble: 0, lastStumble: -99, dark: 0, inv: 1.5, nextRow: 20, lane: 1, px: 0, camX: 0 });
+  clearObs(); orbs.forEach(o => o.on = false); hideScrolls(); powerUps.forEach(p => { p.on = false; p.g.visible = false; });
+  player.root.rotation.x = 0; verseHUD(); comboHUD(); powerHUD(); S.paused = false;
+  toast(`↩ Back at ${cp.name}. Run with endurance! (Hebrews 12:1)`, 2200);
+}
+function fadeFlash() { const f = $('#fade'); f.style.transition = 'none'; f.style.opacity = 1; void f.offsetWidth; f.style.transition = 'opacity .5s ease-out'; f.style.opacity = 0; }
 function prepGate(idx) {
   const q = S.plan.quiz[idx % S.plan.quiz.length];
   const order = shuffle([0, 1, 2]);           // order[lane] = option index
@@ -500,12 +731,12 @@ function judgeGate(g) {
   const hq = $('#hQ');
   gateLanes.forEach((L, i) => { if (i === g.correctLane) { L.curtain.material.color.set('#ffd23f'); drawGateLabel(L.lab, right, GATE_COLS[i], 'ok'); } else drawGateLabel(L.lab, g.q[1][g.order[i]], GATE_COLS[i], 'dim'); });
   if (ok) {
-    S.quizRight++; S.score += 50; addLantern(5); sfx.good();
+    S.quizRight++; addCombo(5); S.score += 50 * comboMult(); addLantern(5); sfx.good(); scorePop();
     for (let k = 0; k < 34; k++) fx.emit(R.px + rand(-1.2, 1.2), rand(0.4, 3.2), rand(-1, 0.5), rand(-4, 4), rand(1, 5), rand(-2, 2), 0.9, 0.6, pick(['#fff3a0', '#ffd23f', '#ffffff']), 0.5);
     $('#hQq').textContent = `✅ Correct! +50 · ${right}`; $('#hQo').innerHTML = `<span class="note">${esc(note)}</span>`; hq.classList.add('ok');
     toast(`✅ Correct! +50 · ${note}`, 1800);
   } else {
-    sfx.soft(); addLantern(-2); R.inv = Math.max(R.inv, 0.7);
+    sfx.soft(); addLantern(-2); loseCombo(); R.inv = Math.max(R.inv, 0.7);
     for (let k = 0; k < 10; k++) fx.emit(R.px + rand(-0.5, 0.5), rand(0.8, 2), 0, rand(-1, 1), rand(0, 1.2), 0, 0.6, 0.5, '#9fb3c8', 0.5);
     $('#hQq').textContent = `💛 The answer was: ${right}`; $('#hQo').innerHTML = `<span class="note">${esc(note)}</span>`; hq.classList.add('bad');
     toast(`💛 Not quite. It was “${right}” · ${note}`, 2400);
@@ -515,7 +746,7 @@ function judgeGate(g) {
 function passStop(idx) {
   const b = bridges[idx % 2];
   if (b && b.userData.sign) R.signFlash = { mat: b.userData.sign.material, t: 1.2 };
-  R.flash = 1.6;
+  R.flash = 1.6; R.cp = snapCP(stopDist(idx) + 1, idx + 1, C.STOPS[idx]);
   for (let k = 0; k < 18; k++) fx.emit(rand(-6, 6), rand(5.5, 8), -2, rand(-2, 2), rand(0, 2), rand(-1, 1), 0.8, 0.6, '#fff3a0', 0.5);
 }
 function autoSteer(dt) {   // test helper (?autopilot): steer to the right gate / scroll, avoid traffic
@@ -657,9 +888,9 @@ const ZONES = [['Main Auditorium', -50, 50, -140, -68], ['Prayer Ground', -70, -
   const tData = []; let tries = 0;
   while (tData.length < 46 && tries++ < 3000) { const x = rand(-95, 95), z = rand(-70, 96); if (isFree(x, z, 3)) tData.push({ x, z, s: rand(0.8, 1.3), r: rand(0, 6) }); }
   tData.forEach(t => colliders.push([t.x - 0.6, t.x + 0.6, t.z - 0.6, t.z + 0.6]));
-  const trees = new THREE.InstancedMesh(treeGeo(), VC, tData.length); outline(trees, 0.07); writeInst(trees, tData); CW.add(trees);
+  const trees = swayInst(treeGeo(), tData.length, 0.07); writeInst(trees, tData); CW.add(trees);
   const pData = []; for (let z = 92; z > -64; z -= 13) pData.push({ x: 8, z, s: 1, r: z }, { x: -8, z: z - 6, s: 1.1, r: z });
-  const cp = new THREE.InstancedMesh(palmGeo(), VC, pData.length); outline(cp, 0.06); writeInst(cp, pData); CW.add(cp);
+  const cp = swayInst(palmGeo(), pData.length, 0.06); writeInst(cp, pData); CW.add(cp);
   const lData = []; for (let z = 96; z > -64; z -= 20) lData.push({ x: 6.5, z, s: 1, r: 0 }, { x: -6.5, z: z - 10, s: 1, r: 0 });
   const cl = new THREE.InstancedMesh(streetLightGeo(), VC, lData.length); outline(cl, 0.05); writeInst(cl, lData); CW.add(cl);
   for (const [x, z, r] of [[-22, 86, 0.2], [-30, 84, -0.1], [-38, 87, 0.15], [32, 92, 1.57]]) { const d = danfo(); d.position.set(x, 0, z); d.rotation.y = r; CW.add(d); colliders.push([x - 2.6, x + 2.6, z - 2.8, z + 2.8]); }
@@ -672,6 +903,7 @@ const arrow = mergedMesh([P(G.cone, '#ffd23f', 0, 0, 0, Math.PI / 2, 0, 0, 0.7, 
 
 let K = null;
 function startCamp() {
+  fadeFlash();
   S.mode = 'camp'; S.paused = false;
   RW.visible = false; CW.visible = true; clearObs(); fx.clear(); setMoralNPC(null);
   setSky('evening', 'evening', 0, 1);
@@ -698,6 +930,8 @@ function startCamp() {
   funke.root.position.set(fSpot[0], 0, fSpot[1]); funke.mark = textSprite('📖', 1.5); funke.mark.position.y = 3.2; funke.root.add(funke.mark);
   CW.add(funke.root); K.all.push(funke); K.funke = funke; K.studied = false;
   player.root.position.set(0, 0, 104); player.root.rotation.set(0, Math.PI, 0); scene.add(player.root); player.root.visible = true;
+  K.occ = []; const _bx = new THREE.Box3(), _sz = new THREE.Vector3(), _c = new THREE.Vector3(), skip = new Set(K.all.map(o => o.root));
+  for (const o of CW.children) { if (skip.has(o) || o.isSprite) continue; _bx.setFromObject(o); _bx.getSize(_sz); _bx.getCenter(_c); if (_sz.y > 1.6 && Math.max(_sz.x, _sz.z) < 9) K.occ.push([o, _c.x, _c.z, Math.max(_sz.x, _sz.z) / 2]); }
   camera.position.set(0, 8.6, 111.6);
   hudMode('camp');
   toast('Drag to walk · Tap the ground to go there · Talk to pilgrims with ❗', 3600);
@@ -768,6 +1002,7 @@ function updateCamp(dt) {
   const ang = Math.atan2(target[0] - K.x, target[1] - K.z);
   arrow.position.set(K.x + Math.sin(ang) * 1.7, 0.3, K.z + Math.cos(ang) * 1.7); arrow.rotation.y = ang; arrow.visible = td > 4;
   camera.position.lerp(_pv.set(K.x, 8.6, K.z + 7.6), Math.min(1, dt * 5)); camera.lookAt(K.x, 1.0, K.z + 0.2);
+  for (const [o, ox, oz, r] of K.occ) o.visible = !(Math.abs(ox - K.x) < r + 1.2 && oz > K.z + 0.6 - r * 0.3 && oz < K.z + 8.5 + r * 0.5);
   sunFollow(K.x, K.z);
   lanternLight.intensity = 1.6 * S.lantern / 100;
   fx.update(dt, 0, 0); lanternHalo(0);
@@ -969,6 +1204,7 @@ function planChapter() {
   return { event, enc, quiz, road, door, quest, verse, story: C.storyBeat(ch) };
 }
 function chapterIntro() {
+  fadeFlash();
   S.mode = 'intro'; S.paused = true; hudMode(null);
   if (titleDanfo) titleDanfo.visible = false;
   RW.visible = true; CW.visible = false; bridges.forEach(b => b.visible = false); roadGate.visible = false;
@@ -991,6 +1227,7 @@ function chapterIntro() {
 }
 
 function showEnding() {
+  fadeFlash();
   S.mode = 'end'; S.paused = true; hudMode(null);
   const vCount = Object.values(S.virtues).reduce((a, b) => a + b, 0);
   const shown = Object.keys(S.virtues).filter(k => S.virtues[k] > 0);
@@ -1060,6 +1297,8 @@ function loop(now) {
     if (S.mode === 'run') updateRun(d); else if (S.mode === 'camp') updateCamp(d);
   }
   if (S.mode === 'intro') { poseHuman(player, 'idle', dt); camera.position.lerp(_pv.set(1.8, 2.0, -4.2), 0.06); camera.lookAt(0, 1.6, 0); sunFollow(0, 0); fx.update(dt, 0, 0); lanternHalo(0); }
+  musicTick(); SWAY_T.value = S.t;
+  if (player && blobP) { blobP.position.set(player.root.position.x, 0.03, player.root.position.z); const k = 1 - Math.min(0.6, player.root.position.y * 0.3); blobP.scale.set(1.5 * k, 1.5 * k, 1); blobP.visible = player.root.visible && S.mode !== 'title'; }
   sky.position.copy(camera.position); clouds.position.set(camera.position.x, 0, camera.position.z); clouds.rotation.y += dt * 0.004;
   renderer.render(scene, camera);
   requestAnimationFrame(loop);
@@ -1075,8 +1314,11 @@ window.LR = {
   skipRun() { if (R) { R.dist = RUN_LEN - 3; R.stopIdx = C.STOPS.length - 1; R.moralIdx = 3; setMoralNPC(null); } },
   near(i) { if (!K) return; const h = K.enc[i]; K.x = h.root.position.x; K.z = h.root.position.z + 2.2; K.tx = null; },
   door() { if (K) { K.x = DOOR[0]; K.z = DOOR[1] + 3; } },
+  hit(t) { if (R && S.mode === 'run') onHit({ type: t, jump: OBS[t].jump, obj: new THREE.Object3D() }); },
+  power(k) { if (R) activatePower(k); },
+  get riseOk() { return R ? R.riseOk : -1; },
   study() { if (K) { K.x = K.funke.root.position.x; K.z = K.funke.root.position.z + 2.2; K.tx = null; } },
   get gate() { return R && R.gate ? { idx: R.gate.idx, shown: R.gate.shown, done: R.gate.done, gd: gateDist(R.gate.idx) - R.dist, lane: R.lane, correct: R.gate.correctLane } : null; },
-  get run() { return R ? { speed: R.speed, vGot: R.vGot, parts: S.plan.verse.parts.length, quizRight: S.quizRight, quizTotal: S.quizTotal, moral: R.moralIdx } : null; },
+  get run() { return R ? { combo: R.combo, fire: R.fire, shield: R.shield, magnet: R.magnet, dark: R.dark, revived: R.revived, cp: R.cp && R.cp.name, speed: R.speed, vGot: R.vGot, parts: S.plan.verse.parts.length, quizRight: S.quizRight, quizTotal: S.quizTotal, moral: R.moralIdx } : null; },
   get encCount() { return K ? K.enc.length : 0; },
 };

@@ -19,8 +19,17 @@ export function danfo() {
     P(G.box, '#ff1744', 0.85, 0.85, 2.32, 0, 0, 0, 0.3, 0.2, 0.06), P(G.box, '#ff1744', -0.85, 0.85, 2.32, 0, 0, 0, 0.3, 0.2, 0.06),
     P(G.box, '#fffde7', 0.8, 0.85, -2.32, 0, 0, 0, 0.35, 0.22, 0.06), P(G.box, '#fffde7', -0.8, 0.85, -2.32, 0, 0, 0, 0.35, 0.22, 0.06),
   ];
-  for (const [x, z] of [[1, 1.5], [-1, 1.5], [1, -1.5], [-1, -1.5]]) { parts.push(P(G.wheel, K, x, 0.45, z, 0, 0, 0, 0.32, 0.9, 0.9)); parts.push(P(G.wheel, '#bdbdbd', x * 1.06, 0.45, z, 0, 0, 0, 0.1, 0.45, 0.45)); }
+  // side window pillars, roof-rack rails, mirrors, bumper chrome and rust trims
+  for (const x of [1.085, -1.085]) for (let z = -1.6; z <= 1.7; z += 0.82) parts.push(P(G.box, K, x, 1.62, z, 0, 0, 0, 0.03, 0.52, 0.09));
+  for (const x of [0.88, -0.88]) parts.push(P(G.box, '#3a3a3a', x, 2.18, 0.2, 0, 0, 0, 0.06, 0.12, 3.6));
+  for (let z = -1.2; z <= 1.6; z += 0.7) parts.push(P(G.box, '#3a3a3a', 0, 2.2, z, 0, 0, 0, 1.82, 0.05, 0.06));
+  parts.push(P(G.box, K, 1.2, 1.55, -2.0, 0, 0, 0, 0.08, 0.3, 0.06), P(G.box, K, -1.2, 1.55, -2.0, 0, 0, 0, 0.08, 0.3, 0.06));
+  parts.push(P(G.box, '#cfd8dc', 0, 0.62, 2.45, 0, 0, 0, 2.0, 0.06, 0.06));
+  for (const [x, y, z, w, h] of [[0.95, 0.75, 1.9, 0.02, 0.25], [-1.06, 0.8, -0.6, 0.02, 0.2], [1.06, 0.72, 0.4, 0.02, 0.18], [0.5, 0.42, 2.37, 0.5, 0.12]]) parts.push(P(G.box, '#8d5524', x + Math.sign(x) * 0.01, y, z, 0, 0, 0, w || 0.02, h, x === 0.5 ? 0.02 : 0.4));
+  for (const [x, z] of [[1, 1.5], [-1, 1.5], [1, -1.5], [-1, -1.5]]) { parts.push(P(G.wheel, K, x, 0.45, z, 0, 0, 0, 0.32, 0.9, 0.9)); parts.push(P(G.wheel, '#bdbdbd', x * 1.06, 0.45, z, 0, 0, 0, 0.1, 0.45, 0.45)); parts.push(P(G.box, '#e0a800', x * 1.02, 0.95, z, 0, 0, 0, 0.12, 0.12, 1.15)); }
   const g = new THREE.Group(); const m = mergedMesh(parts, 0.05); g.add(m);
+  const plate = signMesh(signTex('LAGOS', pick(['KJA 246 XY', 'EKY 316 AA', 'LND 777 KJ', 'IKD 120 BB']), '#ffffff', '#0a6b3c', 256, 96, true), 0.62, 0.24);
+  plate.position.set(0, 0.62, 2.48); g.add(plate);
   const txt = signMesh(signTex(pick(['NO KING AS GOD', 'GOD DEY', 'NO TELEPHONE TO HEAVEN', 'JESUS IS LORD', 'SMALL STOUT', 'EKO O NI BAJE']), '', '#ffc400', '#111', 512, 96, false), 1.7, 0.32);
   txt.position.set(0, 1.12, 2.335); g.add(txt);
   g.userData = { len: 4.6, exhaust: [0.6, 0.45, 2.4] };

@@ -3,19 +3,51 @@ import * as THREE from './vendor/three.min.js';
 export { THREE };
 
 // 3-tone gradient for cel shading
-const gd = new Uint8Array([90, 90, 90, 255, 180, 180, 180, 255, 255, 255, 255, 255]);
-export const GRAD = new THREE.DataTexture(gd, 3, 1, THREE.RGBAFormat);
+const gd = new Uint8Array([104, 104, 104, 255, 158, 158, 158, 255, 214, 214, 214, 255, 255, 255, 255, 255]);
+export const GRAD = new THREE.DataTexture(gd, 4, 1, THREE.RGBAFormat);
 GRAD.minFilter = GRAD.magFilter = THREE.NearestFilter; GRAD.needsUpdate = true;
 
+// warm rim light on every toon material (cheap fresnel term)
+export const RIM = { value: 0.42 };
+export const SWAY_T = { value: 0 };
+function addRim(m) {
+  m.onBeforeCompile = sh => {
+    sh.uniforms.uRim = RIM;
+    sh.fragmentShader = sh.fragmentShader.replace('#include <common>', '#include <common>\nuniform float uRim;')
+      .replace('#include <opaque_fragment>', 'float rimF = pow(1.0 - clamp(dot(normalize(normal), normalize(vViewPosition)), 0.0, 1.0), 3.0);\noutgoingLight += rimF * uRim * vec3(1.0, 0.92, 0.78) * (0.35 + 0.65 * diffuseColor.rgb);\n#include <opaque_fragment>');
+  };
+  m.customProgramCacheKey = () => 'rim';
+  return m;
+}
+const SWAY_VS = `
+  float swH = max(0.0, position.y - 1.2);
+  vec4 swP = instanceMatrix[3];
+  transformed.x += sin(uSway * 1.7 + swP.x * 0.37 + swP.z * 0.21) * swH * swH * 0.011;
+  transformed.z += cos(uSway * 1.3 + swP.z * 0.29 + swP.x * 0.1) * swH * swH * 0.007;`;
+// vertex-coloured toon material whose upper vertices sway (instanced palms / trees)
+export function swayMats(th) {
+  const m = new THREE.MeshToonMaterial({ vertexColors: true, gradientMap: GRAD });
+  m.onBeforeCompile = sh => {
+    sh.uniforms.uRim = RIM; sh.uniforms.uSway = SWAY_T;
+    sh.vertexShader = sh.vertexShader.replace('#include <common>', '#include <common>\nuniform float uSway;').replace('#include <begin_vertex>', '#include <begin_vertex>' + SWAY_VS);
+    sh.fragmentShader = sh.fragmentShader.replace('#include <common>', '#include <common>\nuniform float uRim;')
+      .replace('#include <opaque_fragment>', 'float rimF = pow(1.0 - clamp(dot(normalize(normal), normalize(vViewPosition)), 0.0, 1.0), 3.0);\noutgoingLight += rimF * uRim * vec3(1.0, 0.92, 0.78) * (0.35 + 0.65 * diffuseColor.rgb);\n#include <opaque_fragment>');
+  };
+  m.customProgramCacheKey = () => 'sway';
+  const o = new THREE.MeshBasicMaterial({ color: 0x1a1206, side: THREE.BackSide });
+  o.onBeforeCompile = sh => { sh.uniforms.uSway = SWAY_T; sh.vertexShader = sh.vertexShader.replace('#include <common>', '#include <common>\nuniform float uSway;').replace('#include <begin_vertex>', `#include <begin_vertex>\n transformed += normalize(normal) * ${th.toFixed(4)};` + SWAY_VS); };
+  o.customProgramCacheKey = () => 'swayol' + th;
+  return [m, o];
+}
 const matCache = new Map();
 export function toon(color, extra = {}) {
   const key = color + JSON.stringify(Object.keys(extra));
   if (!extra.map && matCache.has(key)) return matCache.get(key);
-  const m = new THREE.MeshToonMaterial({ color, gradientMap: GRAD, ...extra });
+  const m = addRim(new THREE.MeshToonMaterial({ color, gradientMap: GRAD, ...extra }));
   if (!extra.map) matCache.set(key, m);
   return m;
 }
-export const VC = new THREE.MeshToonMaterial({ vertexColors: true, gradientMap: GRAD });
+export const VC = addRim(new THREE.MeshToonMaterial({ vertexColors: true, gradientMap: GRAD }));
 export const BASIC_GLOW = new THREE.MeshBasicMaterial({ color: 0xfff3a0 });
 
 const olCache = new Map();
@@ -62,13 +94,13 @@ export function mergedMesh(parts, th = 0.04, shadow = true) {
 }
 export const G = {
   box: new THREE.BoxGeometry(1, 1, 1),
-  cyl: new THREE.CylinderGeometry(0.5, 0.5, 1, 10),
+  cyl: new THREE.CylinderGeometry(0.5, 0.5, 1, 14),
   cyl6: new THREE.CylinderGeometry(0.5, 0.5, 1, 6),
   cone: new THREE.ConeGeometry(0.5, 1, 10),
-  sph: new THREE.SphereGeometry(0.5, 12, 9),
-  sphLo: new THREE.SphereGeometry(0.5, 8, 6),
+  sph: new THREE.SphereGeometry(0.5, 18, 13),
+  sphLo: new THREE.SphereGeometry(0.5, 10, 7),
   ico: new THREE.IcosahedronGeometry(0.5, 1),
-  wheel: new THREE.CylinderGeometry(0.5, 0.5, 1, 12).rotateZ(Math.PI / 2),
+  wheel: new THREE.CylinderGeometry(0.5, 0.5, 1, 16).rotateZ(Math.PI / 2),
 };
 
 // ---- canvas textures ----
@@ -176,7 +208,12 @@ function headGeo(o) {
     P(G.box, '#15100c', 0.15, 0.22, 0.37, 0, 0, -0.15, 0.15, 0.03, 0.04), P(G.box, '#15100c', -0.15, 0.22, 0.37, 0, 0, 0.15, 0.15, 0.03, 0.04),
     P(new THREE.TorusGeometry(0.085, 0.022, 4, 10, Math.PI), '#7a1f1f', 0, -0.15, 0.37, 0.2, 0, Math.PI),
     P(G.sphLo, '#d9776a', 0.24, -0.08, 0.32, 0, 0, 0, 0.08, 0.05, 0.03), P(G.sphLo, '#d9776a', -0.24, -0.08, 0.32, 0, 0, 0, 0.08, 0.05, 0.03),
+    // upper lids give the eyes a clean cartoon outline
+    P(G.box, '#15100c', 0.15, 0.18, 0.385, 0, 0, -0.08, 0.2, 0.028, 0.035), P(G.box, '#15100c', -0.15, 0.18, 0.385, 0, 0, 0.08, 0.2, 0.028, 0.035),
   ];
+  if (o.gender === 'f') parts.push(
+    P(G.box, '#15100c', 0.265, 0.17, 0.36, 0, 0, 0.6, 0.07, 0.022, 0.03), P(G.box, '#15100c', 0.27, 0.13, 0.36, 0, 0, 0.2, 0.07, 0.022, 0.03),
+    P(G.box, '#15100c', -0.265, 0.17, 0.36, 0, 0, -0.6, 0.07, 0.022, 0.03), P(G.box, '#15100c', -0.27, 0.13, 0.36, 0, 0, -0.2, 0.07, 0.022, 0.03));
   if (o.head === 'gele') {
     const c = o.headColor;
     parts.push(P(new THREE.TorusGeometry(0.3, 0.12, 6, 14), c, 0, 0.24, -0.02, Math.PI / 2 - 0.25, 0, 0));
@@ -195,6 +232,8 @@ function headGeo(o) {
   } else {
     parts.push(P(G.sph, hair, 0, 0.15, -0.07, 0, 0, 0, 0.92, 0.66, 0.86));
   }
+  if (o.head !== 'gele' && o.head !== 'cap') parts.push(P(G.sphLo, o.old ? '#f4f4f4' : '#4a3a30', 0.1, 0.42, 0.12, -0.5, 0, 0, 0.3, 0.06, 0.16));
+  else if (o.head === 'gele') parts.push(P(G.sphLo, new THREE.Color(o.headColor).lerp(new THREE.Color('#ffffff'), 0.45).getStyle(), 0.08, 0.5, 0.18, -0.6, 0, 0, 0.3, 0.06, 0.14));
   if (o.old && o.gender === 'm') parts.push(P(G.box, '#e8e8e8', 0, -0.3, 0.26, 0.3, 0, 0, 0.26, 0.12, 0.08));
   return merge(parts);
 }
