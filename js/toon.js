@@ -264,6 +264,15 @@ export const PLAYER_OUTFITS = {
   ],
 };
 
+// Unlockable outfits from the shop (index 3+ in the outfit picker)
+export const SHOP_OUTFITS = [
+  { id: 'o_choir', name: 'Choir robe', m: { label: 'Choir robe', top: '#7b1230', topTex: null, bottom: '#7b1230', head: null, hair: 'short', shoe: '#212121', trim: '#ffd23f' }, f: { label: 'Choir robe', top: '#7b1230', topTex: null, skirt: '#7b1230', long: true, head: null, hair: 'bun', shoe: '#212121', trim: '#ffd23f' } },
+  { id: 'o_youth', name: 'Youth T-shirt', m: { label: 'Youth tee', top: '#1e88e5', topTex: null, bottom: '#263238', head: 'cap', headColor: '#ffd23f', hair: 'short', shoe: '#ffffff', trim: '#ffd23f' }, f: { label: 'Youth tee', top: '#1e88e5', topTex: null, skirt: '#263238', long: false, head: null, hair: 'braids', shoe: '#ffffff', trim: '#ffd23f' } },
+  { id: 'o_ankara', name: 'Ankara set', m: { label: 'Ankara set', top: '#c62828', topTex: 3, bottom: '#c62828', head: 'cap', headColor: '#c62828', hair: 'short', shoe: '#3e2723' }, f: { label: 'Ankara set', top: '#00695c', topTex: 4, skirt: 'tex', long: true, head: 'gele', headColor: '#f06292', hair: 'bun', shoe: '#ffca28' } },
+  { id: 'o_usher', name: 'Usher uniform', m: { label: 'Usher', top: '#ffffff', topTex: null, bottom: '#1a237e', head: null, hair: 'short', shoe: '#111111', trim: '#c62828' }, f: { label: 'Usher', top: '#ffffff', topTex: null, skirt: '#1a237e', long: true, head: 'gele', headColor: '#1a237e', hair: 'bun', shoe: '#111111', trim: '#c62828' } },
+  { id: 'o_agbada', name: 'Agbada / Iro & buba', m: { label: 'Agbada', top: '#f3e5ab', topTex: 5, bottom: '#f3e5ab', head: 'cap', headColor: '#4527a0', hair: 'short', shoe: '#5d4037', trim: '#4527a0' }, f: { label: 'Iro & buba', top: '#ef6c00', topTex: 5, skirt: 'tex', long: true, head: 'gele', headColor: '#4527a0', hair: 'bun', shoe: '#4527a0' } },
+];
+
 function partMesh(geo, mat, shadow = true) { const m = new THREE.Mesh(geo, mat); m.castShadow = shadow; return m; }
 const GH = {
   torso: new THREE.CylinderGeometry(0.29, 0.25, 0.62, 10).scale(1, 1, 0.72),
@@ -351,6 +360,10 @@ export function poseHuman(h, mode, dt, speed = 1) {
     set(L.hip, -1.0); set(R.hip, -0.5); set(L.kn, 1.6); set(R.kn, 1.2);
     set(L.sh, -2.6, 0.3); set(R.sh, -2.4, -0.3); set(L.el, -0.3); set(R.el, -0.3);
     lean += 0.1;
+  } else if (mode === 'slide') {
+    set(L.hip, -1.5, 0.1); set(R.hip, -1.25, -0.1); set(L.kn, 0.25); set(R.kn, 0.7);
+    set(L.sh, 0.9, 0.5); set(R.sh, 0.9, -0.5); set(L.el, -0.3); set(R.el, -0.3);
+    lean = -1.0; bob = -0.42; h.head.rotation.x = 0.5;
   } else if (mode === 'sit') {
     set(L.hip, -1.45, 0.12); set(R.hip, -1.45, -0.12); set(L.kn, 1.45); set(R.kn, 1.45);
     set(L.sh, -1.2, 0.15); set(R.sh, -1.2, -0.15); set(L.el, -0.2); set(R.el, -0.2); lean += 0.25;

@@ -41,7 +41,7 @@ export function truck() {
   const parts = [
     P(G.box, cab, 0, 1.55, -3.0, 0, 0, 0, 2.4, 2.1, 1.9), P(G.box, '#2c4a6e', 0, 2.0, -3.96, 0, 0, 0, 2.0, 0.8, 0.05),
     P(G.box, '#ffffff', 0, 2.62, -3.0, 0, 0, 0, 2.2, 0.08, 1.7),
-    P(G.box, box, 0, 2.0, 1.0, 0, 0, 0, 2.5, 2.8, 5.8), P(G.box, '#ffffff', 0, 3.42, 1.0, 0, 0, 0, 2.4, 0.06, 5.6),
+    P(G.box, box, 0, 2.0, 1.0, 0, 0, 0, 2.5, 2.8, 5.8), P(G.box, '#b0bec5', 0, 3.42, 1.0, 0, 0, 0, 2.4, 0.06, 5.6),
     P(G.box, '#333', 0, 0.7, 0, 0, 0, 0, 2.2, 0.35, 7.6),
   ];
   for (let i = 0; i < 6; i++) parts.push(P(G.box, new THREE.Color(box).multiplyScalar(0.8).getStyle(), 0, 2.0, -1.6 + i * 1.05, 0, 0, 0, 2.56, 2.7, 0.12));
@@ -185,11 +185,106 @@ export function gateArch(w = 24, title = 'REDEMPTION CITY', sub = 'KM 46 · WELC
   const s2 = s.clone(); s2.rotation.y = Math.PI; s2.position.z = -0.62; g.add(s2);
   return g;
 }
-export function lanternMesh() {
-  const parts = [P(G.cyl6, '#ffb300', 0, 0.16, 0, 0, 0, 0, 0.2, 0.05, 0.2), P(G.cyl6, '#ffb300', 0, -0.02, 0, 0, 0, 0, 0.22, 0.05, 0.22), P(new THREE.TorusGeometry(0.06, 0.012, 4, 8), '#ffb300', 0, 0.22, 0)];
-  for (const [x, z] of [[0.08, 0.08], [-0.08, 0.08], [0.08, -0.08], [-0.08, -0.08]]) parts.push(P(G.box, '#ffb300', x, 0.07, z, 0, 0, 0, 0.02, 0.18, 0.02));
-  const g = new THREE.Group(); g.add(mergedMesh(parts, 0.012, false));
-  const core = new THREE.Mesh(new THREE.SphereGeometry(0.075, 8, 6), new THREE.MeshBasicMaterial({ color: 0xfff6b0 })); core.position.y = 0.07; g.add(core);
+export function lanternMesh(kind = 'hurricane') {
+  const g = new THREE.Group(); let core;
+  if (kind === 'star') {
+    const sh = new THREE.Shape(); for (let i = 0; i < 10; i++) { const r = i % 2 ? 0.07 : 0.16, a = i / 10 * Math.PI * 2 + Math.PI / 2; i ? sh.lineTo(Math.cos(a) * r, Math.sin(a) * r) : sh.moveTo(Math.cos(a) * r, Math.sin(a) * r); }
+    const geo = new THREE.ExtrudeGeometry(sh, { depth: 0.06, bevelEnabled: false }); geo.translate(0, 0, -0.03);
+    core = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ color: 0xffe066 })); core.position.y = 0.06; g.add(core);
+    g.add(mergedMesh([P(new THREE.TorusGeometry(0.05, 0.012, 4, 8), '#ffb300', 0, 0.26, 0)], 0.01, false));
+  } else if (kind === 'dove') {
+    const parts = [P(G.sphLo, '#ffffff', 0, 0.07, 0, 0, 0, 0, 0.16, 0.13, 0.24), P(G.sphLo, '#ffffff', 0, 0.13, 0.11, 0, 0, 0, 0.1, 0.1, 0.1), P(G.cone, '#ffb300', 0, 0.13, 0.17, Math.PI / 2, 0, 0, 0.04, 0.06, 0.04),
+      P(G.box, '#ffffff', 0.13, 0.1, -0.02, 0, 0, 0.5, 0.2, 0.02, 0.14), P(G.box, '#ffffff', -0.13, 0.1, -0.02, 0, 0, -0.5, 0.2, 0.02, 0.14), P(G.box, '#ffffff', 0, 0.06, -0.15, 0.3, 0, 0, 0.1, 0.02, 0.1),
+      P(new THREE.TorusGeometry(0.05, 0.012, 4, 8), '#ffd23f', 0, 0.26, 0)];
+    g.add(mergedMesh(parts, 0.012, false));
+    core = new THREE.Mesh(new THREE.SphereGeometry(0.05, 8, 6), new THREE.MeshBasicMaterial({ color: 0xfff6b0 })); core.position.y = -0.04; g.add(core);
+  } else if (kind === 'flame') {
+    const parts = [P(G.cyl6, '#5d4037', 0, -0.04, 0, 0, 0, 0, 0.08, 0.16, 0.08), P(G.cyl6, '#8d6e63', 0, 0.05, 0, 0, 0, 0, 0.14, 0.04, 0.14), P(new THREE.TorusGeometry(0.05, 0.012, 4, 8), '#ffb300', 0, 0.3, 0)];
+    g.add(mergedMesh(parts, 0.012, false));
+    core = new THREE.Mesh(new THREE.ConeGeometry(0.07, 0.2, 8), new THREE.MeshBasicMaterial({ color: 0xff8a1e })); core.position.y = 0.16; g.add(core);
+    const in2 = new THREE.Mesh(new THREE.ConeGeometry(0.04, 0.12, 8), new THREE.MeshBasicMaterial({ color: 0xfff176 })); in2.position.y = 0.13; g.add(in2);
+  } else {
+    const parts = [P(G.cyl6, '#ffb300', 0, 0.16, 0, 0, 0, 0, 0.2, 0.05, 0.2), P(G.cyl6, '#ffb300', 0, -0.02, 0, 0, 0, 0, 0.22, 0.05, 0.22), P(new THREE.TorusGeometry(0.06, 0.012, 4, 8), '#ffb300', 0, 0.22, 0)];
+    for (const [x, z] of [[0.08, 0.08], [-0.08, 0.08], [0.08, -0.08], [-0.08, -0.08]]) parts.push(P(G.box, '#ffb300', x, 0.07, z, 0, 0, 0, 0.02, 0.18, 0.02));
+    g.add(mergedMesh(parts, 0.012, false));
+    core = new THREE.Mesh(new THREE.SphereGeometry(0.075, 8, 6), new THREE.MeshBasicMaterial({ color: 0xfff6b0 })); core.position.y = 0.07; g.add(core);
+  }
+  g.userData.core = core;
+  return g;
+}
+// ---- journey props: ramps, rails, barriers, beams, cattle, flyover ----
+const STRIPE = new Map();
+function stripeTex(a, b) { const k = a + b; if (!STRIPE.has(k)) { const c = document.createElement('canvas'); c.width = 64; c.height = 64; const x = c.getContext('2d'); x.fillStyle = a; x.fillRect(0, 0, 64, 64); x.fillStyle = b; for (let i = -64; i < 128; i += 22) { x.beginPath(); x.moveTo(i, 0); x.lineTo(i + 11, 0); x.lineTo(i - 53, 64); x.lineTo(i - 64, 64); x.fill(); } const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; t.wrapS = t.wrapT = THREE.RepeatWrapping; STRIPE.set(k, t); } return STRIPE.get(k); }
+// A plank ramp leading up to height H over length L (rising toward -z, i.e. toward the vehicle in front)
+export function rampMesh(L, H, w = 2.1, col = '#ffb300') {
+  const g = new THREE.Group();
+  const len = Math.hypot(L, H), ang = Math.atan2(H, L);
+  const plank = new THREE.Mesh(new THREE.BoxGeometry(w, 0.14, len), toon('#ffffff', { map: stripeTex(col, '#212121') }));
+  plank.material.map.repeat.set(2, len / 2); plank.rotation.x = ang; plank.position.set(0, H / 2, L / 2); plank.castShadow = true; outline(plank, 0.03); g.add(plank);
+  const legs = mergedMesh([P(G.box, '#5d4037', w / 2 - 0.12, H / 2, 0.5, 0, 0, 0, 0.14, H, 0.14), P(G.box, '#5d4037', -w / 2 + 0.12, H / 2, 0.5, 0, 0, 0, 0.14, H, 0.14), P(G.box, '#5d4037', 0, H * 0.25, L * 0.5, 0, 0, 0, w - 0.3, 0.1, 0.1)], 0.02, false);
+  g.add(legs);
+  return g;
+}
+export function okadaRamp() {
+  const g = new THREE.Group(); const r = rampMesh(3.2, 1.1, 2.2, '#e53935'); g.add(r);
+  const o = okada(); o.position.set(1.7, 0, -0.6); o.rotation.y = 0.5; o.scale.setScalar(0.85); g.add(o);
+  return g;
+}
+export function railMesh(len) {
+  const parts = [P(G.box, '#ffd23f', 0, 0.8, 0, 0, 0, 0, 0.5, 0.12, len), P(G.box, '#cfd8dc', 0, 0.64, 0, 0, 0, 0, 0.62, 0.22, len), P(G.box, '#90a4ae', 0, 0.5, 0, 0, 0, 0, 0.14, 0.1, len)];
+  for (let z = -len / 2 + 0.6; z < len / 2; z += 2.4) parts.push(P(G.box, '#455a64', 0, 0.28, z, 0, 0, 0, 0.2, 0.56, 0.2), P(G.box, '#e53935', 0, 0.66, z, 0, 0, 0, 0.64, 0.24, 0.3));
+  // sloped lead-in at the near end (+z) so you can run straight onto it
+  parts.push(P(G.box, '#ffd23f', 0, 0.42, len / 2 + 1.1, Math.atan2(0.8, 2.2), 0, 0, 0.5, 0.12, 2.4));
+  return mergedMesh(parts, 0.03, true);
+}
+export function barMesh() {
+  const g = new THREE.Group();
+  const bar = new THREE.Mesh(new THREE.BoxGeometry(2.7, 0.45, 0.25), toon('#ffffff', { map: stripeTex('#ffffff', '#e53935') })); bar.material.map.repeat.set(3, 1); bar.position.y = 1.55; bar.castShadow = true; outline(bar, 0.03); g.add(bar);
+  g.add(mergedMesh([P(G.box, '#455a64', 1.3, 0.85, 0, 0, 0, 0, 0.14, 1.7, 0.14), P(G.box, '#455a64', -1.3, 0.85, 0, 0, 0, 0, 0.14, 1.7, 0.14), P(G.box, '#263238', 1.3, 0.04, 0, 0, 0, 0, 0.6, 0.08, 0.5), P(G.box, '#263238', -1.3, 0.04, 0, 0, 0, 0, 0.6, 0.08, 0.5)], 0.03, true));
+  const s = signMesh(signTex('SLIDE!', '', '#ffd23f', '#111', 256, 80, true), 1.1, 0.34); s.position.set(0, 1.55, 0.14); g.add(s);
+  g.userData.bar = bar;
+  return g;
+}
+export function lowSign() {
+  const g = new THREE.Group();
+  g.add(mergedMesh([P(G.box, '#37474f', 1.35, 1.6, 0, 0, 0, 0, 0.12, 3.2, 0.12), P(G.box, '#37474f', -1.35, 1.6, 0, 0, 0, 0, 0.12, 3.2, 0.12), P(G.box, '#37474f', 0, 3.15, 0, 0, 0, 0, 2.8, 0.1, 0.1)], 0.03, true));
+  const s = signMesh(signTex(pick(['GO SLOW', 'DIVERSION', 'MARKET DAY', 'LOW ROOF']), 'DUCK!', '#ff7043', '#fff', 256, 120, true), 2.5, 1.15); s.position.set(0, 1.85, 0.07); g.add(s);
+  const back = new THREE.Mesh(new THREE.BoxGeometry(2.6, 1.25, 0.1), toon('#bf360c')); back.position.set(0, 1.85, 0); g.add(back);
+  return g;
+}
+// Pedestrian-bridge girder low across all three lanes: you must slide
+export function beamMesh() {
+  const g = new THREE.Group();
+  const girder = new THREE.Mesh(new THREE.BoxGeometry(12.4, 0.75, 0.6), toon('#ffffff', { map: stripeTex('#ffd23f', '#212121') })); girder.material.map.repeat.set(10, 1); girder.position.y = 1.55; girder.castShadow = true; outline(girder, 0.04); g.add(girder);
+  const parts = [P(G.box, '#90a4ae', 0, 6.4, 0, 0, 0, 0, 16, 0.5, 2.8), P(G.box, '#1e88e5', 0, 7.2, 1.35, 0, 0, 0, 16, 0.1, 0.1), P(G.box, '#1e88e5', 0, 7.2, -1.35, 0, 0, 0, 16, 0.1, 0.1)];
+  for (const x of [-6.8, 6.8]) parts.push(P(G.box, '#90a4ae', x, 3.2, 0, 0, 0, 0, 0.7, 6.4, 0.7));
+  for (let x = -6; x <= 6; x += 3) parts.push(P(G.box, '#78909c', x, 4.0, 0, 0, 0, 0, 0.18, 4.6, 0.18));
+  g.add(mergedMesh(parts, 0.05, false));
+  return g;
+}
+export function cow() {
+  const c = pick(['#f5f5f5', '#efe6d8', '#8d5a3b', '#e0d0b8']), d = '#3e2723';
+  const parts = [P(G.sph, c, 0, 1.15, 0, 0, 0, 0, 0.95, 0.85, 1.9), P(G.sph, c, 0, 1.45, -0.55, 0, 0, 0, 0.7, 0.55, 0.6),
+    P(G.sph, c, 0, 1.3, -1.15, 0.3, 0, 0, 0.45, 0.5, 0.7), P(G.sphLo, '#d7a99a', 0, 1.15, -1.45, 0, 0, 0, 0.36, 0.3, 0.3),
+    P(G.cone, '#eeeeee', 0.35, 1.7, -1.1, 0, 0, -1.0, 0.12, 0.8, 0.12), P(G.cone, '#eeeeee', -0.35, 1.7, -1.1, 0, 0, 1.0, 0.12, 0.8, 0.12),
+    P(G.sphLo, d, 0.13, 1.45, -1.38, 0, 0, 0, 0.07, 0.07, 0.05), P(G.sphLo, d, -0.13, 1.45, -1.38, 0, 0, 0, 0.07, 0.07, 0.05),
+    P(G.cyl6, d, 0, 1.0, 0.95, 0.5, 0, 0, 0.05, 0.7, 0.05)];
+  for (const [x, z] of [[0.28, 0.6], [-0.28, 0.6], [0.28, -0.6], [-0.28, -0.6]]) parts.push(P(G.cyl6, c, x, 0.4, z, 0, 0, 0, 0.18, 0.8, 0.18), P(G.box, d, x, 0.04, z, 0, 0, 0, 0.2, 0.08, 0.2));
+  const g = new THREE.Group(); g.add(mergedMesh(parts, 0.04, false)); return g;
+}
+export function herder() {
+  const h = makeHuman({ ...randomLook({ gender: 'm', cap: true }), top: pick(['#fff8e1', '#90caf9', '#a1887f']), topTex: null, headColor: '#c62828' }, false);
+  const staff = mergedMesh([P(G.cyl6, '#6d4c41', 0, 0.9, 0, 0, 0, 0.12, 0.06, 2.1, 0.06)], 0.02, false); staff.position.set(0.45, 0, 0.2); h.root.add(staff);
+  h.root.userData.human = h; return h.root;
+}
+// Ojota-style flyover crossing the expressway
+export function flyover() {
+  const parts = [P(G.box, '#cfd8dc', 0, 8.2, 0, 0, 0, 0, 90, 1.0, 9), P(G.box, '#eceff1', 0, 8.9, 4.4, 0, 0, 0, 90, 0.6, 0.3), P(G.box, '#eceff1', 0, 8.9, -4.4, 0, 0, 0, 90, 0.6, 0.3), P(G.box, '#ffd23f', 0, 7.65, 4.55, 0, 0, 0, 90, 0.12, 0.08)];
+  for (const x of [-30, -19, -7.2, 7.2, 19, 30]) parts.push(P(G.box, '#b0bec5', x, 3.9, 0, 0, 0, 0, 1.4, 7.8, 2.2), P(G.box, '#b0bec5', x, 7.5, 0, 0, 0, 0, 2.6, 0.6, 7));
+  const g = new THREE.Group(); g.add(mergedMesh(parts, 0.07, false));
+  const s = signMesh(signTex('OJOTA INTERCHANGE', 'IKORODU RD · LAGOS–IBADAN EXPY', '#0a6b3c'), 9, 2); s.position.set(0, 10.4, 0.2); g.add(s);
+  const back = new THREE.Mesh(new THREE.BoxGeometry(9.3, 2.3, 0.15), toon('#0a6b3c')); back.position.set(0, 10.4, 0.05); g.add(back);
+  for (let i = 0; i < 5; i++) { const v = pick([danfo, danfo, truck])(); v.rotation.y = Math.PI / 2 * (i % 2 ? 1 : -1); v.position.set(-38 + i * 17, 8.7, (i % 2 ? 2 : -2)); v.scale.setScalar(0.9); g.add(v); }
   return g;
 }
 export function textSprite(txt, size = 1.2) {

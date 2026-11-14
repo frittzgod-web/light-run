@@ -14,6 +14,10 @@
 <div id="darkV"></div>
 <div id="pops"></div>
 <div id="fade"></div>
+<div id="bolt"></div>
+<div id="zoneCard"></div>
+<div id="bossCard"></div>
+<div id="gust"></div>
 <button id="snd" class="iconbtn" aria-label="Toggle sound">🔊</button>
 
 <div id="hud" class="hidden">
@@ -24,6 +28,7 @@
   <div class="hrow2"><div class="pill combo hidden" id="hCombo"></div><div class="pill pow hidden" id="hPow"></div></div>
   <div class="pill info" id="hInfo">Next stop: Ojota</div>
   <div class="prog"><i id="hProg"></i></div>
+  <div id="map"><div class="track"><i id="mapFill"></i></div><div id="mapStops"></div><div id="mapBest" class="hidden">🏁</div><div id="mapMe">🏃🏾</div></div>
   <div id="hVerse" class="hidden"></div>
   <div id="hQ" class="hidden"><div class="qq" id="hQq"></div><div class="qopts" id="hQo"></div></div>
 </div>
@@ -37,13 +42,16 @@
     <div class="ribbon">LAGOS ➜ KM 46</div>
     <h1 class="t1">REDEMPTION CITY</h1>
     <h1 class="t2">LIGHT RUN</h1>
-    <div class="t3">3D · Endless chapters</div>
+    <div class="t3">3D · One epic run · Endless chapters</div>
   </div>
   <div class="menu">
     <button id="btnContinue" class="btn primary hidden">▶ Continue</button>
     <button id="btnNew" class="btn primary">Start a new journey</button>
     <div class="row2"><button id="btnHow" class="btn">How to play</button><a class="btn" href="classic/">Classic 2D</a></div>
+    <div class="row3"><button id="btnDaily" class="btn slim">📅 Daily</button><button id="btnShop" class="btn slim">🛍️ Shop</button><button id="btnBoard" class="btn slim">🏆 Group</button></div>
     <button id="btnVerses" class="btn slim">📜 My Verses</button>
+    <p id="streakNote" class="small streak-note"></p>
+    <p id="challenge" class="small challenge hidden"></p>
     <p id="hiscore" class="small"></p>
   </div>
 </section>
@@ -56,6 +64,7 @@
     <div class="seg" id="segGender"><button data-g="m">👦🏾 Boy</button><button data-g="f">👧🏾 Girl</button></div>
     <div class="seg small3" id="segOutfit"></div>
     <div class="skins" id="skins"></div>
+    <button id="btnSelShop" class="btn slim">🛍️ Outfits, lanterns & trails</button>
     <button id="btnGo" class="btn primary">Let's go! ▶</button>
     <button class="btn ghost" id="btnSelBack">Back</button>
   </div>
@@ -66,11 +75,15 @@
     <h2>How to play</h2>
     <h3>🛣️ Part 1 · Expressway Run</h3>
     <ul>
-      <li><b>Swipe left / right</b> to change lane. <b>Swipe up or tap</b> to jump.</li>
+      <li>One continuous run: <b>Lagos ➜ Redemption City, KM 46</b>. Watch the map strip at the top.</li>
+      <li><b>Swipe left / right</b> to change lane. <b>Swipe up or tap</b> to jump. <b>Swipe down</b> to slide under barriers, low signs and bridge beams.</li>
+      <li>Run up the <b>ramps</b> onto danfo and trailer roofs. Land on <b>rails</b> to grind for bonus points. Hit an <b>okada ramp</b> for a boost!</li>
+      <li>Boss moments: the <b>Long Bridge storm</b>, the <b>Ibafo go-slow</b> and the <b>Mowe market rush</b>.</li>
       <li>Jump <b>potholes</b> and <b>cones</b>. Dodge <b>danfos</b>, <b>okadas</b>, <b>trucks</b> and <b>hawkers</b>.</li>
       <li>Grab ✨ <b>light orbs</b>. At every bus stop a <b>Bible question</b> appears at the top: swipe into the lane with the right answer and run through its <b>glowing gate</b>. No stopping!</li>
       <li>Collect 📜 <b>verse scrolls</b> to build the chapter's memory verse. Complete it for a big light bonus; it's saved in <b>My Verses</b>.</li>
-      <li>The road gets <b>faster and busier</b> the further you go.</li>
+      <li>The road gets <b>faster and faster</b> the further you go.</li>
+      <li>Spend 💡 light in the <b>Shop</b> on outfits, lanterns and trails. Do 3 <b>daily challenges</b> and keep your streak.</li>
       <li>Stop for people in need: it costs time, but gives <b>lasting light</b>.</li>
     </ul>
     <h3>⛺ Part 2 · Inside the Camp</h3>
@@ -87,6 +100,7 @@
   </div>
 </section>
 
+<section id="shop" class="screen bottom"><div class="card selcard shopcard" id="shopBody"></div></section>
 <section id="modal" class="screen dim"><div class="card scroll" id="modalBody"></div></section>
 <section id="dialog" class="sheet"><div class="sheet-inner" id="dialogBody"></div></section>
 <section id="end" class="screen"><div class="card scroll" id="endBody"></div></section>
@@ -100,6 +114,7 @@
   // Fallback: suggest classic if the module never starts (very old browsers)
   setTimeout(function(){ if(!window.__lr3dReady){ var l=document.getElementById('loading'); if(l) l.innerHTML='Still loading… <a href="classic/" style="color:#ffd23f">Play the classic version</a>'; } }, 7000);
 </script>
+<script src="js/lb-config.js"></script>
 <script type="module" src="js/main.js"></script>
 </body>
 </html>

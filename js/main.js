@@ -1,7 +1,8 @@
 // Redemption City: Light Run 3D — main game
-import { RIM, SWAY_T, swayMats } from './toon.js';
+import { RIM, SWAY_T, swayMats, SHOP_OUTFITS } from './toon.js';
 import { THREE, toon, VC, outline, P, G, merge, mergedMesh, canvasTex, signTex, signMesh, SOFT, CLOUD, Particles, makeHuman, poseHuman, randomLook, PLAYER_OUTFITS, SKINS } from './toon.js';
-import { danfo, truck, okada, cones, pothole, hawker, palmGeo, treeGeo, building, billboard, stall, streetLightGeo, bridge, setBridgeSign, gateArch, lanternMesh, textSprite } from './props.js';
+import { danfo, truck, okada, cones, pothole, hawker, palmGeo, treeGeo, building, billboard, stall, streetLightGeo, bridge, setBridgeSign, gateArch, lanternMesh, textSprite, rampMesh, okadaRamp, railMesh, barMesh, lowSign, beamMesh, cow, herder, flyover } from './props.js';
+import * as M from './meta.js';
 import * as C from './content.js';
 
 const $ = s => document.querySelector(s);
@@ -14,7 +15,7 @@ const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;',
 const params = new URLSearchParams(location.search);
 const TIME_SCALE = clamp(+params.get('speed') || 1, 1, 8);
 const LITE = params.has('lite');
-const AUTO = params.has('autopilot'), AUTO_MIX = params.get('autopilot') === 'mix';
+const AUTO = params.has('autopilot'), AUTO_MIX = params.get('autopilot') === 'mix', AUTO_FUN = AUTO;
 
 /* ---------------- WebGL check ---------------- */
 function hasGL() { try { const c = document.createElement('canvas'); return !!(c.getContext('webgl2') || c.getContext('webgl')); } catch (e) { return false; } }
@@ -51,9 +52,15 @@ for (let i = 0; i < 11; i++) {
 const PRESETS = {
   day: { top: '#1569ff', mid: '#a6e1ff', bot: '#d8f0c0', fog: '#bfe6ff', sun: '#fff1d0', sunI: 2.5, hemiS: '#fff4dd', hemiG: '#6a8a3a', hemiI: 1.6, sunPos: [0.5, 0.35, -1] },
   dusk: { top: '#35297a', mid: '#ff9150', bot: '#6b4a40', fog: '#f2a676', sun: '#ffb070', sunI: 1.9, hemiS: '#ffd2b0', hemiG: '#5a5a3a', hemiI: 1.3, sunPos: [0.2, 0.06, -1] },
+  storm: { top: '#070a1a', mid: '#1c2438', bot: '#131a26', fog: '#1e2636', sun: '#7d93b8', sunI: 0.55, hemiS: '#7086b0', hemiG: '#1c242c', hemiI: 0.6, sunPos: [0.1, 0.5, -1] },
   evening: { top: '#2a3a96', mid: '#ffae74', bot: '#4c6b3a', fog: '#f7c093', sun: '#ffc690', sunI: 2.0, hemiS: '#ffe6c8', hemiG: '#5e7a3a', hemiI: 1.45, sunPos: [-0.6, 0.12, -1] },
 };
 const _ca = new THREE.Color(), _cb = new THREE.Color();
+function blendPreset(a, b, t) {
+  const A = PRESETS[a], B = PRESETS[b], o = {};
+  for (const k in A) o[k] = typeof A[k] === 'string' ? '#' + _ca.set(A[k]).lerp(_cb.set(B[k]), t).getHexString() : Array.isArray(A[k]) ? A[k].map((v, i) => lerp(v, B[k][i], t)) : lerp(A[k], B[k], t);
+  return o;
+}
 function setSky(a, b, t, fogMul = 1) {
   const A = PRESETS[a], B = PRESETS[b];
   const mix = (k) => _ca.set(A[k]).lerp(_cb.set(B[k]), t).clone();
@@ -65,7 +72,7 @@ function setSky(a, b, t, fogMul = 1) {
   scene.fog.near = 60 / fogMul; scene.fog.far = 250 / fogMul;
 }
 setSky('day', 'day', 0);
-const fx = new Particles(260); scene.add(fx.points);
+const fx = new Particles(420); scene.add(fx.points);
 const halos = new Particles(90); halos.mat.blending = THREE.AdditiveBlending; scene.add(halos.points);
 for (const pm of [fx.mat, halos.mat]) pm.fragmentShader = pm.fragmentShader.replace('t.a*vA); }', 't.a*vA);\n#include <colorspace_fragment>\n}');
 function resize() {
@@ -106,8 +113,9 @@ const BASS = [55, 55, 65.4, 73.4, 49, 49, 58.3, 65.4];   // A A C D G G Bb C (wa
 const ARP = [440, 523, 659, 784, 659, 523];
 function musicTick() {
   if (!soundOn || !actx || S.mode !== 'run' || S.paused || !R) { MUS.next = 0; return; }
-  const bpm = Math.min(156, 92 + (R.speed - 11) * 3.6 + (R.fire > 0 ? 14 : 0)), stepDur = 60 / bpm / 2;
-  const lvl = R.fire > 0 ? 4 : R.speed < 14 ? 0 : R.speed < 18 ? 1 : R.speed < 22 ? 2 : 3;
+  const boss = R.boss ? R.boss.id : null;
+  const bpm = Math.min(168, 104 + (R.speed - 20) * 1.15 + (R.fire > 0 || R.burst > 0 ? 12 : 0) + (boss ? 10 : 0)), stepDur = 60 / bpm / 2;
+  const lvl = R.fire > 0 ? 4 : boss ? 3 : R.speed < 26 ? 1 : R.speed < 38 ? 2 : 3;
   const now = actx.currentTime; if (MUS.next < now) MUS.next = now + 0.05;
   while (MUS.next < now + 0.14) {
     const t = MUS.next, st = MUS.step % 8, bar = Math.floor(MUS.step / 8) % 8;
@@ -118,6 +126,7 @@ function musicTick() {
     if (st % 2 === 0) toneAt(BASS[bar] * (st === 6 ? 1.5 : 1), t, stepDur * 1.6, 'triangle', 0.09);
     if (lvl >= 4 || (lvl >= 3 && st % 2 === 0)) toneAt(ARP[(MUS.step) % ARP.length] * (R.fire > 0 ? 1.5 : 1), t, stepDur * 0.9, 'square', 0.022);
     if (R.dark > 0 && st === 0) toneAt(41, t, stepDur * 8, 'sawtooth', 0.03);
+    if (boss) { if (st === 3 || st === 7) toneAt(boss === 'storm' ? 98 : 130, t, stepDur, 'square', 0.035, 60); if (st === 0 && bar % 2 === 0) toneAt(BASS[bar] * 2, t, stepDur * 7, 'sawtooth', 0.025); if (bar % 4 === 3 && st >= 4) toneAt(200 - st * 12, t, stepDur * 0.8, 'triangle', 0.06, 90); }
     MUS.next += stepDur; MUS.step++;
   }
 }
@@ -134,6 +143,9 @@ const sfx = {
   whoosh: () => { if (actx) noiseAt(actx.currentTime, 0.18, 0.06, 2500); },
   power: () => [392, 523, 659, 784, 1046].forEach((f, i) => beep(f, 0.14, 'square', 0.05, i * 0.06)),
   shield: () => { beep(784, 0.2, 'sine', 0.1); beep(1175, 0.3, 'sine', 0.06, 0.08); },
+  grind: () => { if (actx) noiseAt(actx.currentTime, 0.25, 0.05, 3500); beep(1320, 0.12, 'square', 0.03); },
+  boss: () => { if (!actx) return; const t = actx.currentTime; [0, 0.18, 0.36].forEach((d, i) => toneAt([110, 98, 82][i], t + d, 0.4, 'sawtooth', 0.09)); noiseAt(t, 0.6, 0.06, 300); },
+  thunder: () => { if (!actx) return; const t = actx.currentTime; noiseAt(t, 1.2, 0.16, 120); toneAt(48, t, 1.0, 'sawtooth', 0.06, 30); },
 };
 const sndBtn = $('#snd');
 const paintSnd = () => sndBtn.textContent = soundOn ? '🔊' : '🔇';
@@ -185,14 +197,15 @@ function verseHUD(pop) {
 /* ---------------- Player ---------------- */
 let player = null, lantern = null, lanternLight = null;
 function lookFromSave(sv) {
-  const of = PLAYER_OUTFITS[sv.gender][sv.outfit % 3];
+  const list = [...PLAYER_OUTFITS[sv.gender], ...SHOP_OUTFITS.map(o => o[sv.gender])];
+  const of = list[sv.outfit] && (sv.outfit < 3 || M.wallet().owned.includes(SHOP_OUTFITS[sv.outfit - 3].id)) ? list[sv.outfit] : list[0];
   return { ...of, gender: sv.gender, skin: SKINS[sv.skin % SKINS.length], skirt: sv.gender === 'f' ? of.skirt : null, kid: false, old: false };
 }
-function buildPlayer(sv = save || freshSave()) {
+function buildPlayer(sv = save || freshSave(), lant) {
   if (player && player.root.parent) player.root.parent.remove(player.root);
   player = makeHuman(lookFromSave(sv), true);
   player.root.traverse(o => { if (o.isMesh && !o.userData.outline) o.castShadow = true; });
-  lantern = lanternMesh(); lantern.position.set(0, -0.42, 0.05); player.R.el.add(lantern);
+  lantern = lanternMesh(LANTERN_KIND[lant || M.wallet().lantern] || 'hurricane'); lantern.position.set(0, -0.42, 0.05); player.R.el.add(lantern);
   lanternLight = new THREE.PointLight(0xffd27a, 0, 9, 1.6); lantern.add(lanternLight);
   scene.add(player.root); player.root.visible = true;
 }
@@ -200,6 +213,7 @@ function buildPlayer(sv = save || freshSave()) {
 /* =========================================================
    EXPRESSWAY WORLD
    ========================================================= */
+let groundMat = null;
 const RW = new THREE.Group(); scene.add(RW);
 const LANES = [-3.2, 0, 3.2];
 const roadTex = canvasTex(512, 512, (x, w, h) => {
@@ -222,7 +236,7 @@ grassTex.repeat.set(60, 60);
 {
   const road = new THREE.Mesh(new THREE.PlaneGeometry(12, 320), toon('#ffffff', { map: roadTex })); road.rotation.x = -Math.PI / 2; road.position.set(0, 0.01, -140); road.receiveShadow = true; RW.add(road);
   const road2 = road.clone(); road2.position.x = -13; RW.add(road2);
-  const ground = new THREE.Mesh(new THREE.PlaneGeometry(600, 600), toon('#ffffff', { map: grassTex })); ground.rotation.x = -Math.PI / 2; ground.position.set(0, -0.02, -150); ground.receiveShadow = true; RW.add(ground);
+  const ground = new THREE.Mesh(new THREE.PlaneGeometry(600, 600), groundMat = toon('#ffffff', { map: grassTex })); ground.rotation.x = -Math.PI / 2; ground.position.set(0, -0.02, -150); ground.receiveShadow = true; RW.add(ground);
   RW.add(mergedMesh([P(G.box, '#eceff1', -6.5, 0.45, -140, 0, 0, 0, 0.7, 0.9, 320), P(G.box, '#ffd23f', -6.5, 0.93, -140, 0, 0, 0, 0.74, 0.08, 320)], 0.04, false));
 }
 function swayInst(geo, n, th) { const [m, o] = swayMats(th); const im = new THREE.InstancedMesh(geo, m, n); outline(im, th); im.children[0].material = o; return im; }
@@ -241,23 +255,52 @@ const lamps = new THREE.InstancedMesh(streetLightGeo(), VC, 11); outline(lamps, 
 const lampData = Array.from({ length: 11 }, (_, i) => ({ x: -6.5, z: 25 - i * 30, s: 1, r: 0 }));
 const _mtx = new THREE.Matrix4(), _q = new THREE.Quaternion(), _sv = new THREE.Vector3(), _pv = new THREE.Vector3(), _up = new THREE.Vector3(0, 1, 0);
 function writeInst(mesh, data) {
-  data.forEach((d, i) => { _q.setFromAxisAngle(_up, d.r); _mtx.compose(_pv.set(d.x, 0, d.z), _q, _sv.setScalar(d.s)); mesh.setMatrixAt(i, _mtx); });
+  data.forEach((d, i) => { _q.setFromAxisAngle(_up, d.r); _mtx.compose(_pv.set(d.x, 0, d.z), _q, _sv.setScalar(d.hide ? 0 : d.s)); mesh.setMatrixAt(i, _mtx); });
   mesh.instanceMatrix.needsUpdate = true; mesh.computeBoundingSphere();
 }
 const roadside = [];
-function addSide(obj, x, z, ry, span = 330) { obj.position.set(x, 0, z); obj.rotation.y = ry; RW.add(obj); roadside.push({ obj, span }); }
+function addSide(obj, x, z, ry, span = 330, kind = 'building') { obj.position.set(x, 0, z); obj.rotation.y = ry; RW.add(obj); roadside.push({ obj, span, kind }); return obj; }
 for (let i = 0; i < 10; i++) addSide(building(), rand(15, 20), -300 + i * 33, -Math.PI / 2);
 for (let i = 0; i < 8; i++) addSide(building(), rand(-24, -28), -300 + i * 41, Math.PI / 2);
-for (let i = 0; i < 5; i++) addSide(billboard(), rand(12, 14), -290 + i * 66, -0.45);
-for (let i = 0; i < 3; i++) addSide(billboard(), -22, -250 + i * 110, 0.45);
-for (let i = 0; i < 7; i++) addSide(stall(), rand(8.6, 10.5), -300 + i * 47, rand(0, 6));
+for (let i = 0; i < 5; i++) addSide(billboard(), rand(12, 14), -290 + i * 66, -0.45, 330, 'billboard');
+for (let i = 0; i < 3; i++) addSide(billboard(), -22, -250 + i * 110, 0.45, 330, 'billboard');
+for (let i = 0; i < 7; i++) addSide(stall(), rand(8.6, 10.5), -300 + i * 47, rand(0, 6), 330, 'stall');
+// zone-only scenery: Kara cattle + herders, Mowe market stalls + traders
+for (let i = 0; i < 18; i++) addSide(cow(), i % 3 === 2 ? rand(-21, -27) : rand(8.6, 14), -300 + i * 18 + rand(0, 8), rand(0, 6.28), 330, 'cow');
+const herders = []; for (let i = 0; i < 3; i++) herders.push(addSide(herder(), rand(8.6, 11), -260 + i * 110, rand(-1, 1), 330, 'cow'));
+for (let i = 0; i < 12; i++) addSide(stall(), i % 2 ? rand(8.4, 10.2) : rand(-21, -23.5), -300 + i * 27.5, rand(0, 6), 330, 'market');
+const traders = []; for (let i = 0; i < 5; i++) { const h = makeHuman(randomLook({ gender: pick(['m', 'f']) }), false); h.root.userData.human = h; traders.push(addSide(h.root, rand(7.4, 8.2), -280 + i * 66, rand(-2, -1), 330, 'market')); }
+/* ---- journey scale + zones ---- */
+const UPK = 200;                                   // world units per km (game scale: Lagos → KM 46)
+const KM = d => d / UPK;
+const zoneIdx = km => { let k = 0; C.ZONES.forEach((z, i) => { if (km >= z.km) k = i; }); return k; };
+const zoneAt = km => C.ZONES[zoneIdx(km)];
+const zoneEnd = id => { const i = C.ZONES.findIndex(z => z.id === id); return C.ZONES[i + 1] ? C.ZONES[i + 1].km : C.TOTAL_KM; };
+const SIDE_RULE = { building: z => !z.water && !z.cows, billboard: z => !z.water, stall: z => !z.water && !z.cows, cow: z => !!z.cows, market: z => !!z.market };
+const curDist = () => (R && (S.mode === 'run')) ? R.dist : 0;
+// Long Bridge lagoon + parapets
+const BR0 = C.ZONES.find(z => z.water).km * UPK, BR1 = zoneEnd('bridge') * UPK, BRL = BR1 - BR0;
+const waterTex = canvasTex(128, 128, (x, w, h) => { x.fillStyle = '#2b8fd0'; x.fillRect(0, 0, w, h); for (let i = 0; i < 110; i++) { x.fillStyle = pick(['rgba(255,255,255,.35)', 'rgba(170,225,255,.5)', 'rgba(15,80,140,.35)']); x.fillRect(Math.random() * w, Math.random() * h, 6 + Math.random() * 16, 2); } }, true);
+waterTex.repeat.set(40, BRL / 8);
+const lagoon = new THREE.Group(); lagoon.visible = false; RW.add(lagoon);
+{
+  const wm = toon('#ffffff', { map: waterTex });
+  const wR = new THREE.Mesh(new THREE.PlaneGeometry(300, BRL + 40), wm); wR.rotation.x = -Math.PI / 2; wR.position.set(6.6 + 150, 0.03, 0);
+  const wL = wR.clone(); wL.position.x = -19.6 - 150; lagoon.add(wR, wL);
+  const parT = canvasTex(64, 32, (x, w, h) => { x.fillStyle = '#eceff1'; x.fillRect(0, 0, w, h); x.fillStyle = '#78909c'; for (let i = 4; i < w; i += 16) x.fillRect(i, 9, 6, h - 12); x.fillStyle = '#ffd23f'; x.fillRect(0, 0, w, 5); }, true); parT.repeat.set(BRL / 2.5, 1);
+  for (const px of [6.55, -19.65]) { const p = new THREE.Mesh(new THREE.BoxGeometry(0.4, 1.2, BRL + 40), toon('#ffffff', { map: parT })); p.position.set(px, 0.6, 0); lagoon.add(p); }
+  for (let i = 0; i < 10; i++) { const c = mergedMesh([P(G.box, '#6d4c41', 0, 0.18, 0, 0, 0, 0, 1.0, 0.36, 4.2), P(G.box, '#8d6e63', 0, 0.38, 0, 0, 0, 0, 0.8, 0.06, 3.6)], 0.03, false); c.position.set(i % 2 ? rand(18, 70) : rand(-30, -80), 0, rand(-BRL / 2, BRL / 2)); c.rotation.y = rand(0, 6); lagoon.add(c); }
+}
+// Ojota interchange flyovers
+const FLY_D = [1.1 * UPK, 3.3 * UPK]; const flyovers = FLY_D.map(() => { const f = flyover(); f.visible = false; RW.add(f); return f; });
+const DUST = { kara: ['#c9a46a', 0.72], mowe: ['#bf9f6e', 0.5] };
 const walkers = [];
 for (let i = 0; i < 4; i++) { const h = makeHuman(randomLook({ gender: pick(['m', 'f']) }), false); h.root.position.set(rand(7, 7.8), 0, -60 * i); RW.add(h.root); walkers.push(h); }
 const oncoming = [];
 for (let i = 0; i < 4; i++) { const v = i % 3 === 2 ? truck() : danfo(); v.rotation.y = Math.PI; v.position.set(i % 2 ? -10.6 : -15.2, 0, -80 * i); RW.add(v); oncoming.push(v); }
 const bridges = [bridge(), bridge()]; bridges.forEach(b => { b.visible = false; RW.add(b); });
 const roadGate = gateArch(14.5); roadGate.visible = false; RW.add(roadGate);
-const ORB_N = 80;
+const ORB_N = 150;
 const orbMesh = new THREE.InstancedMesh(new THREE.IcosahedronGeometry(0.42, 1), new THREE.MeshBasicMaterial({ color: 0xffe14a }), ORB_N); orbMesh.frustumCulled = false; RW.add(orbMesh);
 const orbs = Array.from({ length: ORB_N }, () => ({ on: false, x: 0, y: 1, z: 0 }));
 function hideOrbs() { const m = new THREE.Matrix4().makeScale(0, 0, 0); for (let i = 0; i < ORB_N; i++) orbMesh.setMatrixAt(i, m); orbMesh.instanceMatrix.needsUpdate = true; }
@@ -327,76 +370,209 @@ const FALL_VERSES = [
 const OBS = {
   pothole: { make: pothole, rel: 1, jump: true, len: 1.6 },
   cone: { make: cones, rel: 1, jump: true, len: 0.9 },
-  danfo: { make: danfo, rel: 0.55, jump: false, len: 4.6 },
-  truck: { make: truck, rel: 0.6, jump: false, len: 8 },
-  okada: { make: okada, rel: 0.45, jump: false, len: 2.2 },
+  danfo: { make: danfo, rel: 0.78, jump: false, len: 4.6, surf: 2.08, big: true },
+  truck: { make: truck, rel: 0.8, jump: false, len: 8, surf: 3.45, big: true },
+  okada: { make: okada, rel: 0.7, jump: false, len: 2.2, big: true },
   hawker: { make: hawker, rel: 1, jump: false, len: 0.9 },
+  hawkerX: { make: hawker, rel: 1, jump: false, len: 0.9, cross: true },
+  danfoP: { make: danfo, rel: 1, jump: false, len: 4.6, surf: 2.08, big: true, parked: true },
+  truckP: { make: truck, rel: 1, jump: false, len: 8, surf: 3.45, big: true, parked: true },
+  danfoR: { make: () => withRamp(danfo(), 4.6, 5.2, 2.08), rel: 1, jump: false, len: 4.6, surf: 2.08, ramp: 5.2, big: true, parked: true },
+  truckR: { make: () => withRamp(truck(), 8, 7.5, 3.45), rel: 1, jump: false, len: 8, surf: 3.45, ramp: 7.5, big: true, parked: true },
+  kramp: { make: okadaRamp, rel: 1, jump: false, len: 0.2, surf: 1.1, ramp: 3.2, launch: true },
+  rail: { make: null, rel: 1, jump: false, len: 30, surf: 0.85, ramp: 2.2, grind: true },
+  bar: { make: barMesh, rel: 1, slide: true, len: 0.5, over: 1.85 },
+  sign: { make: lowSign, rel: 1, slide: true, len: 0.4, over: 3.3 },
+  beam: { make: beamMesh, rel: 1, slide: true, len: 0.8, over: 2.05, wide: true },
 };
+function withRamp(v, len, L, H) { const r = rampMesh(L, H); r.position.z = len / 2; v.add(r); return v; }
 const freeObs = {}, active = [];
-function spawnObs(type, lane, z) {
-  freeObs[type] = freeObs[type] || [];
-  let obj = freeObs[type].pop();
-  if (!obj) { obj = OBS[type].make(); if (type !== 'pothole') { obj.traverse(o => { if (o.isMesh && !o.userData.outline) o.castShadow = true; }); const L = OBS[type].len; addBlob(obj, type === 'cone' ? 1.6 : type === 'hawker' ? 1.3 : 2.9, Math.max(1.4, L * 1.15)); } }
-  obj.position.set(LANES[lane], 0, z); RW.add(obj);
-  active.push({ type, lane, obj, hit: false, ex: 0, ...OBS[type] });
+function spawnObs(type, lane, z, len) {
+  const D = OBS[type], key = type === 'rail' ? 'rail' + len : type;
+  freeObs[key] = freeObs[key] || [];
+  let obj = freeObs[key].pop();
+  if (!obj) {
+    obj = type === 'rail' ? railMesh(len) : D.make();
+    if (type !== 'pothole' && type !== 'rail') { obj.traverse(o => { if (o.isMesh && !o.userData.outline) o.castShadow = true; }); if (!D.slide && type !== 'kramp') addBlob(obj, type === 'cone' ? 1.6 : type.startsWith('hawker') ? 1.3 : 2.9, Math.max(1.4, D.len * 1.15)); }
+  }
+  obj.position.set(D.wide ? 0 : LANES[lane], 0, z); obj.rotation.set(0, 0, 0); RW.add(obj);
+  if (obj.userData.bar) obj.userData.bar.position.y = 1.55;
+  const a = { type, key, lane, obj, hit: false, ex: 0, ...D, len: type === 'rail' ? len : D.len };
+  active.push(a); return a;
 }
 function clearObs(filter = () => true) {
-  for (let i = active.length - 1; i >= 0; i--) { const a = active[i]; if (filter(a)) { RW.remove(a.obj); freeObs[a.type].push(a.obj); active.splice(i, 1); } }
+  for (let i = active.length - 1; i >= 0; i--) { const a = active[i]; if (filter(a)) { RW.remove(a.obj); freeObs[a.key].push(a.obj); active.splice(i, 1); } }
 }
 function spawnOrb(x, y, z) { const o = orbs.find(o => !o.on); if (o) Object.assign(o, { on: true, x, y, z }); }
 
-const FIRST = 150, GAP = 200, SPAWN_Z = -140;
-const stopDist = i => FIRST + i * GAP;
-const RUN_LEN = stopDist(C.STOPS.length - 1);
+const SPAWN_Z = -150;
+const STOP_D = C.STOP_KM.map(k => k * UPK);
+const stopDist = i => STOP_D[i];
+const RUN_LEN = STOP_D[STOP_D.length - 1];
 let R = null;
 function moveProps(move) {
-  for (const d of palmData) { d.z += move; if (d.z > 25) d.z -= 330; }
+  const d0 = curDist();
+  for (const d of palmData) { d.z += move; if (d.z > 25) d.z -= 330; d.hide = !!zoneAt(KM(d0 - d.z)).water; }
   for (const d of lampData) { d.z += move; if (d.z > 25) d.z -= 330; }
   writeInst(palms, palmData); writeInst(lamps, lampData);
-  for (const r of roadside) { r.obj.position.z += move; if (r.obj.position.z > 30) r.obj.position.z -= r.span; }
-  for (const h of walkers) { h.root.position.z += move * 1.05; if (h.root.position.z > 25) h.root.position.z -= 300; }
+  for (const r of roadside) { r.obj.position.z += move; if (r.obj.position.z > 30) r.obj.position.z -= r.span; r.obj.visible = SIDE_RULE[r.kind](zoneAt(KM(d0 - r.obj.position.z))); }
+  for (const h of walkers) { h.root.position.z += move * 1.05; if (h.root.position.z > 25) h.root.position.z -= 300; h.root.visible = !zoneAt(KM(d0 - h.root.position.z)).water; }
   roadTex.offset.y += move / 8; grassTex.offset.y += move / 10; kerbTex.offset.y += move * 110 / 320;
+  lagoon.position.z = -((BR0 + BR1) / 2 - d0); lagoon.visible = d0 + 330 > BR0 && d0 - 40 < BR1; if (lagoon.visible) waterTex.offset.x = S.t * 0.02;
+  flyovers.forEach((f, i) => { const z = -(FLY_D[i] - d0); f.position.z = z; f.visible = z > -330 && z < 40; });
 }
+function resetGround() { groundMat.color.setScalar(1); groundMat.emissive.setScalar(0); }
 function startRun() {
   fadeFlash();
   S.mode = 'run'; S.paused = false;
   RW.visible = true; CW.visible = false; scene.add(player.root); player.root.visible = true; player.root.position.set(0, 0, 0); player.root.rotation.set(0, Math.PI, 0);
-  clearObs(); orbs.forEach(o => o.on = false); fx.clear();
-  R = { combo: 0, comboT: 0, fire: 0, shield: false, shieldT: 0, magnet: 0, stumble: 0, lastStumble: -99, dark: 0, revived: false, nextPowerD: 240, popT: 0, dist: 0, t: 0, speed: 11, lane: 1, px: 0, camX: 0, py: 0, jt: 0, inv: 0, shake: 0, nextRow: 30, stopIdx: 0, moralIdx: 0, dustT: 0, ev: S.plan.event, gate: null, vGot: 0, nextScrollD: 70, autoT: 0, flash: 0, signFlash: null };
-  R.scrollGap = (RUN_LEN - 260) / (S.plan.verse.parts.length + 2.5);
+  clearObs(); orbs.forEach(o => o.on = false); fx.clear(); resetGround();
+  R = { combo: 0, comboT: 0, fire: 0, shield: false, shieldT: 0, magnet: 0, stumble: 0, lastStumble: -99, dark: 0, revived: false, nextPowerD: 380, popT: 0, dist: 0, t: 0, speed: START_SPEED, lane: 1, px: 0, camX: 0, py: 0, vy: 0, g: 50, onGround: true, coyote: 0, jbuf: 0, sbuf: 0, sl: 0, burst: 0, grind: false, grindM: 0, grindRun: 0, slides: 0, roofs: 0, inv: 0, shake: 0, nextRow: 40, stopIdx: 0, moralIdx: 0, dustT: 0, trailT: 0, ev: S.plan.event, gate: null, vGot: 0, nextScrollD: 120, autoT: 0, flash: 0, signFlash: null, zone: -1, boss: null, bossDone: {}, kmInt: 0, earn: 0, orbBuf: 0, dustK: 0, dustCol: '#c9a46a', traffic: 1, jamFree: 1, jamRows: 3, tightGap: false, startT: performance.now() };
+  R.scrollGap = (RUN_LEN - 600) / (S.plan.verse.parts.length + 1.5);
   hideScrolls(); answerGate.visible = false; $('#hQ').classList.add('hidden');
-  R.cp0 = R.cp = snapCP(0, 0, 'Ojota (the start)');
-  hudMode('run'); verseHUD(); powerHUD();
-  toast('Swipe ⬅️ ➡️ to change lane · Swipe ⬆️ or tap to jump · Grab 📜 scrolls!', 3400);
+  R.cp0 = R.cp = snapCP(0, 0, 'Lagos (the start)');
+  hudMode('run'); verseHUD(); powerHUD(); buildMap();
+  const st = M.markPlayed(); if (st) setTimeout(() => toast(`🔥 Day ${st.n} streak! +${st.reward} 💡 light`, 2400), 3600);
+  toast('Swipe ⬅️ ➡️ lanes · ⬆️ jump · ⬇️ slide · Run Lagos → KM 46!', 3400);
 }
-const JT = 0.66;
-function runMove(d) { const n = clamp(R.lane + d, 0, 2); if (n !== R.lane) { R.lane = n; sfx.tap(); } }
-function runJump() { if (R.jt <= 0) { R.jt = JT; sfx.jump(); } }
-const MAX_SPEED = 28;
+const START_SPEED = 20, MAX_SPEED = 72, JUMP_H = 2.4;
+const airT = () => clamp(0.62 - (R.speed - 20) * 0.0022, 0.5, 0.62);
+const slideT = () => clamp(0.72 - (R.speed - 20) * 0.004, 0.5, 0.72);
+function runMove(d) { const n = clamp(R.lane + d, 0, 2); if (n !== R.lane) { R.lane = n; sfx.tap(); if (R.grind) endGrind(); } }
+function runJump() {
+  if (R.onGround || R.coyote > 0) { const T = airT(); R.g = 8 * JUMP_H / (T * T); R.vy = 4 * JUMP_H / T; R.onGround = false; R.coyote = 0; R.sl = 0; R.jbuf = 0; sfx.jump(); if (R.grind) endGrind(); }
+  else R.jbuf = 0.2;     // buffered: jump the moment you land
+}
+function runSlide() {
+  if (!R.onGround) { R.vy = Math.min(R.vy, -30); R.sbuf = 0.35; }   // slam down, then slide on landing
+  else if (R.sl <= 0.1) { R.sl = slideT(); sfx.whoosh(); if (R.grind) endGrind(); }
+}
 function runSpeed() {
   const ch = save.chapter, p = clamp(R.dist / RUN_LEN, 0, 1);
-  const base = 11.5 + Math.min(6, (ch - 1) * 0.75);
-  return Math.min(MAX_SPEED, base * Math.min(1, 0.6 + R.t * 0.16) + 9.5 * p);
+  const s0 = START_SPEED + Math.min(8, (ch - 1) * 1.0);
+  return Math.min(MAX_SPEED, s0 * Math.min(1, 0.7 + R.t * 0.3) + (MAX_SPEED - s0) * Math.pow(p, 0.7));
 }
-function rowGap() { return Math.max(13, 31 - (R.speed - 11) * 1.05) / Math.sqrt(R.ev.mod.traffic); }
-const readDist = () => clamp(R.speed * 6, 95, 150);
-function inGateZone(arrive) {
-  for (const i of [R.stopIdx, R.stopIdx + 1]) { if (i >= C.STOPS.length - 1) continue; const gz = gateDist(i); if (arrive > gz - readDist() - 6 && arrive < stopDist(i) + 8) return true; }
-  return false;
+function rowGap() { const T = Math.max(0.62, lerp(1.05, 0.66, clamp(R.dist / RUN_LEN, 0, 1)) / Math.sqrt(R.traffic * R.ev.mod.traffic)); return Math.max(16, R.speed * T); }
+const readDist = () => clamp(R.speed * 4.2, 120, 300);
+function gateZone(arrive) {   // 2 = quiet, 1 = jumpables only, 0 = normal
+  let z = 0;
+  for (const i of [R.stopIdx, R.stopIdx + 1]) { if (i >= C.STOPS.length - 1) continue; const gz = gateDist(i); if (arrive > gz - readDist() - 6 && arrive < stopDist(i) + 8) z = Math.max(z, arrive > gz - 70 ? 2 : 1); }
+  return z;
 }
-function spawnRow() {
-  const sp = R.speed, ch = save.chapter, tr = R.ev.mod.traffic, easy = sp < 14.5 && ch === 1;
-  const pool = easy ? ['pothole', 'cone', 'danfo', 'pothole'] : sp < 19 ? ['pothole', 'cone', 'danfo', 'okada', 'hawker', 'danfo'] : ['pothole', 'cone', 'danfo', 'okada', 'truck', 'hawker', 'danfo', 'okada'];
-  if (tr > 1.3) pool.push('danfo', 'truck');
+const inGateZone = arrive => gateZone(arrive) > 0;
+function groundAt(px) {
+  let h = 0, top = null;
+  for (const a of active) {
+    if (!a.surf || a.fly || Math.abs(a.obj.position.x - px) > 1.25) continue;
+    const z = a.obj.position.z, half = a.len / 2; let y = -1;
+    if (Math.abs(z) <= half + 0.15) y = a.surf;
+    else if (a.ramp) { const e = -(z + half); if (e >= 0 && e <= a.ramp) y = a.surf * (1 - e / a.ramp); }
+    if (y > h) { h = y; top = a; }
+  }
+  return [h, top];
+}
+/* ---- obstacle patterns ---- */
+function busyLane(l) { return active.some(a => (a.wide || a.lane === l) && (a.rel < 1 ? a.obj.position.z < -20 : a.obj.position.z - a.len / 2 - (a.ramp || 0) * 0 < SPAWN_Z + 8)); }
+function pickPattern() {
+  const km = KM(R.dist), b = R.boss && R.boss.id;
+  let W;
+  if (b === 'storm') W = { basic: 3, slide: 3.5 };
+  else if (b === 'goslow') W = { jam: 8, basic: 0.4 };
+  else if (b === 'market') W = { market: 5, slide: 1.2, basic: 0.8 };
+  else if (km < 1.0) W = { basic: 6, slide: 1, grind: 0.6 };
+  else W = { basic: 5, slide: 1.5, roof: 1.4, grind: 1.3, launch: km > 3 ? 0.8 : 0 };
+  if (FORCE.pattern) { const k = FORCE.pattern; FORCE.pattern = null; return k; }
+  let t = Object.values(W).reduce((a, b) => a + b, 0) * Math.random();
+  for (const k in W) { t -= W[k]; if (t <= 0) return k; }
+  return 'basic';
+}
+const FORCE = { pattern: null };
+function freeLanes() { return shuffle([0, 1, 2]).filter(l => !busyLane(l)); }
+function rowBasic(light) {
+  const sp = R.speed, ch = save.chapter, tr = R.traffic * R.ev.mod.traffic, easy = ch === 1 && KM(R.dist) < 1.6;
+  const pool = light ? ['pothole', 'cone'] : easy ? ['pothole', 'cone', 'danfo', 'pothole'] : sp < 40 ? ['pothole', 'cone', 'danfo', 'okada', 'hawker', 'danfo', 'bar'] : ['pothole', 'cone', 'danfo', 'okada', 'truck', 'hawker', 'danfo', 'okada', 'bar'];
+  if (!light && tr > 1.25) pool.push('danfo', 'truck');
   if (R.ev.mod.rain) pool.push('pothole', 'pothole');
-  const two = Math.random() < Math.min(0.72, (easy ? 0 : 0.2) + Math.max(0, sp - 13) * 0.04 + (tr - 1) * 0.3);
-  const lanes = shuffle([0, 1, 2]); const n = two ? 2 : 1;
+  const lanes = freeLanes(); if (!lanes.length) return 0;
+  const two = !light && Math.random() < Math.min(0.7, (easy ? 0 : 0.25) + Math.max(0, sp - 24) * 0.012 + (tr - 1) * 0.3);
+  const n = lanes.length === 3 ? (two ? 2 : 1) : lanes.length === 2 ? 1 : 0;
   for (let i = 0; i < n; i++) spawnObs(pick(pool), lanes[i], SPAWN_Z - i * rand(0, 3));
-  const free = lanes[n], cnt = 4 + Math.floor(Math.random() * 3);
+  const free = lanes[n] ?? lanes[0], cnt = 4 + Math.floor(Math.random() * 3);
   for (let k = 0; k < cnt; k++) spawnOrb(LANES[free], 1.0, SPAWN_Z - 4 - k * 2.6);
   const first = active[active.length - n];
-  if (first && first.jump && Math.random() < 0.6) for (let k = -1; k <= 1; k++) spawnOrb(LANES[first.lane], 2.3 - Math.abs(k) * 0.5, SPAWN_Z + k * 1.6);
+  if (n && first && first.jump && Math.random() < 0.6) for (let k = -1; k <= 1; k++) spawnOrb(LANES[first.lane], 2.5 - Math.abs(k) * 0.5, SPAWN_Z + k * 1.8);
+  return 0;
 }
+function rowSlide() {
+  const lanes = freeLanes(); if (!lanes.length) return 0;
+  const storm = R.boss && R.boss.id === 'storm';
+  if (lanes.length === 3 && Math.random() < (storm ? 0.25 : 0.4)) {
+    spawnObs('beam', 1, SPAWN_Z); const l = pick([0, 1, 2]); for (let k = -2; k <= 2; k++) spawnOrb(LANES[l], 0.55, SPAWN_Z + k * 2.2); return 2;
+  }
+  const n = lanes.length >= 2 && Math.random() < 0.55 ? 2 : 1;
+  for (let i = 0; i < n; i++) {
+    const a = spawnObs(R.boss && R.boss.id === 'market' ? 'sign' : Math.random() < 0.25 ? 'sign' : 'bar', lanes[i], SPAWN_Z);
+    if (storm && a.obj.userData.bar) { a.drop = true; a.dropV = 0; a.obj.userData.bar.position.y = 7.5; }
+  }
+  if (lanes[n] !== undefined) { if (Math.random() < 0.4) spawnObs('cone', lanes[n], SPAWN_Z - rand(0, 4)); else for (let k = 0; k < 5; k++) spawnOrb(LANES[lanes[n]], 1.0, SPAWN_Z - k * 2.6); }
+  for (let k = -2; k <= 2; k++) spawnOrb(LANES[lanes[0]], 0.55, SPAWN_Z + k * 2.0);
+  return 2;
+}
+function rowRoof() {
+  const lanes = freeLanes(); if (lanes.length < 2) return rowBasic();
+  const L = lanes[0], type = R.speed > 32 && Math.random() < 0.3 ? 'truckR' : 'danfoR', D = OBS[type];
+  const z0 = SPAWN_Z - D.len / 2 - D.ramp; spawnObs(type, L, z0);
+  for (let z = z0 + D.len / 2 - 0.5; z > z0 - D.len / 2; z -= 2.2) spawnOrb(LANES[L], D.surf + 1.0, z);
+  let far = z0 - D.len / 2;
+  if (Math.random() < 0.6) { const D2 = OBS.danfoP, zz = far - rand(1.5, 3.5) - D2.len / 2; spawnObs('danfoP', L, zz); for (let z = zz + 2; z > zz - 2.3; z -= 2.2) spawnOrb(LANES[L], D2.surf + 1.0, z); far = zz - D2.len / 2; }
+  for (const l of lanes.slice(1)) { const r = Math.random(); if (r < 0.45) spawnObs(Math.random() < 0.75 ? 'danfoP' : 'truckP', l, SPAWN_Z - rand(2, 8) - 2.3); else if (r < 0.7) spawnObs('cone', l, SPAWN_Z - rand(0, 6)); }
+  return SPAWN_Z - far;
+}
+function rowGrind() {
+  const lanes = freeLanes(); if (lanes.length < 2) return rowBasic();
+  const L = lanes[0], len = pick([24, 32, 40]);
+  spawnObs('rail', L, SPAWN_Z - 2.2 - len / 2, len);
+  for (let k = 0; k < len; k += 3) spawnOrb(LANES[L], 1.95, SPAWN_Z - 2.2 - k);
+  for (const l of lanes.slice(1)) for (let k = 4; k < len; k += rand(10, 15)) if (Math.random() < 0.55) spawnObs(pick(['cone', 'pothole', 'bar']), l, SPAWN_Z - k);
+  return len + 2.2;
+}
+function rowLaunch() {
+  const lanes = freeLanes(); if (lanes.length < 2) return rowBasic();
+  const L = lanes[0], D = OBS.kramp, zt = SPAWN_Z - D.ramp;
+  spawnObs('kramp', L, zt - D.len / 2);
+  for (let k = 1; k <= 9; k++) { const t = k * 0.085; spawnOrb(LANES[L], 1.1 + 17 * t - 25 * t * t + 0.9, zt - R.speed * t); }
+  if (Math.random() < 0.6) spawnObs('danfoP', lanes[1], SPAWN_Z - 3 - rand(0, 6));
+  return 6;
+}
+function rowJam() {
+  const lanes = [0, 1, 2].filter(l => !busyLane(l)); if (lanes.length < 3) return rowBasic(true);
+  let change = false;
+  if (--R.jamRows <= 0) { R.jamFree = clamp(R.jamFree + pick([-1, 1]), 0, 2); R.jamRows = 3 + Math.floor(Math.random() * 3); change = true; }
+  const rampL = Math.random() < 0.5 ? pick([0, 1, 2].filter(l => l !== R.jamFree)) : -1;
+  let far = SPAWN_Z;
+  for (const l of lanes) {
+    if (l === R.jamFree) { for (let k = 0; k < 4; k++) spawnOrb(LANES[l], 1.0, SPAWN_Z - k * 2.6); continue; }
+    const type = l === rampL ? 'danfoR' : 'danfoP', D = OBS[type], z = SPAWN_Z - (D.ramp || rand(0, 3)) - D.len / 2;
+    spawnObs(type, l, z); far = Math.min(far, z - D.len / 2);
+    if (Math.random() < 0.5) spawnOrb(LANES[l], D.surf + 1.0, z);
+  }
+  if (Math.random() < 0.3) sfx.horn();
+  R.tightGap = !change;
+  return SPAWN_Z - far;
+}
+function rowMarket() {
+  const lanes = freeLanes(); if (lanes.length < 2) return rowBasic(true);
+  const r = Math.random();
+  if (r < 0.4) { const a = spawnObs('hawkerX', lanes[0], SPAWN_Z); a.vx = (lanes[0] === 2 ? -1 : lanes[0] === 0 ? 1 : pick([-1, 1])) * rand(1.4, 2.4); }
+  else if (r < 0.7) spawnObs('sign', lanes[0], SPAWN_Z);
+  else spawnObs(pick(['cone', 'pothole', 'hawker']), lanes[0], SPAWN_Z);
+  if (lanes.length === 3 && Math.random() < 0.5) spawnObs(pick(['cone', 'hawker', 'sign']), lanes[1], SPAWN_Z - rand(4, 9));
+  const fl = lanes[lanes.length - 1]; for (let k = 0; k < 7; k++) spawnOrb(LANES[fl], 1.0, SPAWN_Z - k * 2.4);
+  return 3;
+}
+const ROWS = { basic: () => rowBasic(), slide: rowSlide, roof: rowRoof, grind: rowGrind, launch: rowLaunch, jam: rowJam, market: rowMarket };
+function spawnRow(light) { return light ? rowBasic(true) : ROWS[pickPattern()](); }
+
 let moralNPC = null;
 function setMoralNPC(m) {
   if (moralNPC) RW.remove(moralNPC.root);
@@ -405,78 +581,189 @@ function setMoralNPC(m) {
   const mk = textSprite('❗', 1.4); mk.position.y = 3.1; moralNPC.root.add(mk); moralNPC.mark = mk;
   moralNPC.root.position.set(6.6, 0, -999); RW.add(moralNPC.root);
 }
-const MORAL_AFTER = [2, 6];
+const MORAL_AFTER = [1, 4];
+/* ---- grind ---- */
+function startGrind() { R.grind = true; R.grindRun = 0; sfx.grind(); popText('⚙️ Grind!', ''); }
+function endGrind() {
+  if (!R.grind) return; R.grind = false;
+  const m = Math.round(R.grindRun); if (m >= 3) { const p = Math.round(m * 1.5) * comboMult(); S.score += p; addCombo(3); popText(`⚙️ Grind ${m} m +${p}`, 'big'); scorePop(); dstat('grindM', m); }
+}
+function dstat(stat, v = 1, mode) { const done = M.dailyStat(stat, v, mode); for (const c of done) { setTimeout(() => { popText(`📅 ${c.t} ✓ +${c.r} 💡`, 'big'); sfx.good(); }, 300); } }
+/* ---- zones + bosses ---- */
+function enterZone(i) {
+  const z = C.ZONES[i]; R.zone = i; R.traffic = z.traffic || 1;
+  if (S.mode === 'run') { zoneCard(z.name, z.sub, `KM ${Math.round(z.km)}`); }
+  if (z.id === 'bridge') dstat('reachBridge', 1, 'max');
+  if (z.id === 'mowe') dstat('reachMowe', 1, 'max');
+}
+function zoneCard(t, sub, km, cls = '') {
+  const el = $('#zoneCard'); el.className = cls; el.innerHTML = `<small>${esc(km)}</small><b>${esc(t)}</b><span>${esc(sub)}</span>`;
+  void el.offsetWidth; el.classList.add('show'); clearTimeout(el._t); el._t = setTimeout(() => el.classList.remove('show'), 2300);
+}
+function bossStart(id) {
+  const B = C.BOSSES[id]; R.boss = { id, crashes: 0, gustT: 3.5, boltT: 1.2, warn: null };
+  clearTimeout($('#zoneCard')._t); $('#zoneCard').classList.remove('show');
+  const el = $('#bossCard'); el.className = 'boss ' + id; el.innerHTML = `<div class="bi">${B.icon}</div><b>${esc(B.title)}</b><span>${esc(B.sub)}</span>`; void el.offsetWidth; el.classList.add('show');
+  clearTimeout(el._t); el._t = setTimeout(() => el.classList.remove('show'), 2600);
+  sfx.boss(); shakeDOM(); document.body.classList.add('boss-' + id);
+}
+function bossEnd(win) {
+  const b = R.boss; if (!b) return; const B = C.BOSSES[b.id];
+  document.body.classList.remove('boss-' + b.id); $('#gust').classList.remove('show');
+  R.boss = null; if (!win) return;
+  R.bossDone[b.id] = true;
+  const pts = b.crashes ? Math.round(B.reward / 2) : B.reward;
+  S.score += pts; addLantern(10); R.earn += Math.round(pts / 5); sfx.good(); scorePop();
+  if (b.id === 'storm') dstat('storm', 1, 'max'); if (b.id === 'goslow') dstat('goslow', 1, 'max');
+  const el = $('#bossCard'); el.className = 'boss win'; el.innerHTML = `<b>${esc(B.winTitle)} +${pts}</b><span>“${esc(B.win[0])}”</span><small>${esc(B.win[1])} (KJV)</small>`; void el.offsetWidth; el.classList.add('show');
+  clearTimeout(el._t); el._t = setTimeout(() => el.classList.remove('show'), 4200);
+  for (let k = 0; k < 40; k++) fx.emit(R.px + rand(-3, 3), rand(0.5, 4), rand(-4, 0), rand(-3, 3), rand(1, 5), rand(-2, 2), 1.0, 0.6, pick(['#fff3a0', '#ffd23f', '#ffffff']), 0.5);
+}
+function updateBoss(dt) {
+  const km = KM(R.dist);
+  for (const id in C.BOSSES) { const B = C.BOSSES[id]; if (km >= B.km0 && km < B.km1 && !R.bossDone[id] && (!R.boss || R.boss.id !== id)) bossStart(id); }
+  const b = R.boss; if (!b) return;
+  const B = C.BOSSES[b.id];
+  if (km >= B.km1) { bossEnd(true); return; }
+  if (km < B.km0) { bossEnd(false); return; }
+  if (b.id === 'storm') {
+    for (let i = 0; i < 5; i++) fx.emit(R.px + rand(-14, 14), rand(7, 13), rand(-34, 4), rand(-4, -1), -30, 0, 0.45, 0.16, '#cfe8ff', 0);
+    R.dark = Math.max(R.dark, 0.6);
+    if ((b.boltT -= dt) <= 0) { b.boltT = rand(3, 5.5); const f = $('#bolt'); f.classList.remove('on'); void f.offsetWidth; f.classList.add('on'); hemi.intensity = 3.2; setTimeout(() => sfx.thunder(), 180); }
+    hemi.intensity += (PRESETS.storm.hemiI - hemi.intensity) * Math.min(1, dt * 6);
+    if (!b.warn && (b.gustT -= dt) <= 0) { const dir = R.lane === 0 ? 1 : R.lane === 2 ? -1 : pick([-1, 1]); b.warn = { dir, t: 0.9 }; const g = $('#gust'); g.textContent = dir > 0 ? '💨 Wind gust ➡️' : '⬅️ Wind gust 💨'; g.classList.add('show'); }
+    if (b.warn && (b.warn.t -= dt) <= 0) { const before = R.lane; runMove(b.warn.dir); if (R.lane !== before) { shakeDOM(); sfx.whoosh(); popText('💨 Pushed by the wind!', 'dim'); } b.warn = null; b.gustT = rand(3.2, 5.2); $('#gust').classList.remove('show'); }
+  }
+}
+function updateZoneFX(dt, km) {
+  const zi = zoneIdx(km); if (zi !== R.zone) enterZone(zi);
+  const z = C.ZONES[zi], du = DUST[z.id]; if (du) R.dustCol = du[0];
+  R.dustK += ((du ? du[1] : 0) - R.dustK) * Math.min(1, dt * 0.7);
+  groundMat.color.setScalar(1 - R.dustK); groundMat.emissive.set(R.dustCol).multiplyScalar(R.dustK * 0.8);
+  for (const h of herders) if (h.visible) poseHuman(h.userData.human, 'idle', dt);
+  for (const h of traders) if (h.visible) poseHuman(h.userData.human, 'wave', dt);
+  const k = Math.floor(km); if (k > R.kmInt) { R.kmInt = k; dstat('km', 1); if (k % 5 === 0) popText(`📍 ${k} km`, 'dim'); }
+}
+function emitTrails(dt) {
+  const w = M.wallet(); if ((R.trailT -= dt) > 0) return; R.trailT = 0.035;
+  const L = M.shopItem(w.lantern); if (lantern) { lantern.getWorldPosition(_pv); const c = L ? L.trail : '#ffd27a'; const k = w.lantern;
+    fx.emit(_pv.x + rand(-0.05, 0.05), _pv.y, _pv.z + 0.1, rand(-0.2, 0.2), k === 'l_flame' ? rand(1, 2) : rand(-0.2, 0.4), rand(0.5, 1.5), k === 'l_dove' ? 0.9 : 0.5, k === 'l_star' ? 0.32 : 0.2, c, k === 'l_dove' ? 0.5 : 1); }
+  const t = w.trail, fy = R.py + 0.1;
+  if (t === 't_gold') fx.emit(R.px + rand(-0.25, 0.25), fy, 0.4, 0, rand(0.1, 0.4), 0, 0.7, 0.35, pick(['#ffd23f', '#fff3a0']), 0.6);
+  else if (t === 't_rainbow') { const cols = ['#ff1744', '#ff9100', '#ffea00', '#00e676', '#2979ff', '#d500f9']; cols.forEach((c, i) => fx.emit(R.px - 0.5 + i * 0.2, fy + 0.15, 0.4, 0, 0.05, 0, 0.6, 0.28, c, 0.2)); }
+  else if (t === 't_wings') for (const s of [-1, 1]) fx.emit(R.px + s * 0.55, R.py + 1.35, 0.3, s * rand(0.5, 1.4), rand(0.2, 0.8), 0.6, 0.6, 0.36, '#ffffff', 0.8);
+}
 function updateRun(dt) {
   const ch = save.chapter, ev = R.ev;
   R.t += dt;
   if (R.stumble > 0) R.stumble -= dt;
-  R.speed = runSpeed() * (R.stumble > 0 ? 1 - 0.5 * (R.stumble / 0.9) : 1) * (R.fire > 0 ? 1.35 : 1);
+  if (R.burst > 0) R.burst -= dt;
+  R.speed = Math.min(92, runSpeed() * (R.stumble > 0 ? 1 - 0.5 * (R.stumble / 0.9) : 1) * Math.min(1.38, (R.fire > 0 ? 1.3 : 1) * (R.burst > 0 ? 1.25 : 1)));
   if (AUTO) autoSteer(dt);
   updatePowers(dt);
   const move = R.speed * dt; R.dist += move;
+  const km = KM(R.dist);
   moveProps(move);
+  updateZoneFX(dt, km); updateBoss(dt);
   for (const v of oncoming) { v.position.z += move + 18 * dt; if (v.position.z > 30) { v.position.z = -300 - rand(0, 60); v.position.x = Math.random() < 0.5 ? -10.6 : -15.2; } }
-  R.px += (LANES[R.lane] - R.px) * Math.min(1, dt * 12);
-  const wasAir = R.py > 0.05;
-  if (R.jt > 0) { R.jt -= dt; R.py = Math.sin(Math.PI * clamp(1 - R.jt / JT, 0, 1)) * 2.1; } else R.py = 0;
-  if (wasAir && R.py <= 0.05) for (let i = 0; i < 8; i++) fx.emit(R.px + rand(-0.3, 0.3), 0.15, rand(-0.2, 0.4), rand(-2, 2), rand(0.3, 1), rand(-1, 1), 0.6, 0.7, '#e2c39a', 2);
+  R.px += (LANES[R.lane] - R.px) * Math.min(1, dt * 20);
+  // vertical: jumps, ramps, roofs, rails
+  const [gy, surfA] = groundAt(R.px);
+  if (R.onGround) {
+    if (gy <= R.py + 1.25 && gy >= R.py - 0.08) R.py = gy;
+    else if (gy < R.py - 0.08) {
+      R.onGround = false; R.coyote = 0.09;
+      if (R.surfA && R.surfA.launch) { R.vy = 17; R.g = 50; R.burst = 2.2; R.coyote = 0; const p = 30 * comboMult(); S.score += p; addCombo(3); popText(`🚀 Okada ramp boost! +${p}`, 'big'); sfx.power(); for (let k = 0; k < 18; k++) fx.emit(R.px + rand(-0.6, 0.6), R.py, 0.5, rand(-2, 2), rand(0, 2), rand(1, 4), 0.5, 0.6, '#ffb74d', 1); }
+      else R.vy = 0;
+    }
+  }
+  if (!R.onGround) {
+    R.vy -= R.g * dt; R.py += R.vy * dt; if (R.coyote > 0) R.coyote -= dt;
+    if (R.vy <= 0 && R.py <= gy && (R.py >= gy - 0.6 || gy < 0.01)) {
+      R.py = gy; R.onGround = true; R.vy = 0;
+      if (gy < 0.3) for (let i = 0; i < 8; i++) fx.emit(R.px + rand(-0.3, 0.3), gy + 0.15, rand(-0.2, 0.4), rand(-2, 2), rand(0.3, 1), rand(-1, 1), 0.6, 0.7, '#e2c39a', 2);
+      if (R.jbuf > 0) runJump(); else if (R.sbuf > 0) { R.sbuf = 0; R.sl = slideT(); sfx.whoosh(); }
+    } else if (R.py < 0) { R.py = 0; R.vy = 0; R.onGround = true; }
+  }
+  R.surfA = R.onGround ? surfA : null;
+  if (R.jbuf > 0) R.jbuf -= dt; if (R.sbuf > 0) R.sbuf -= dt; if (R.sl > 0) R.sl -= dt;
+  const onTop = R.onGround && surfA && R.py > 0.5 ? surfA : null;
+  if (onTop && onTop.grind) {
+    if (!R.grind) startGrind(); R.grindRun += move; R.grindM += move;
+    if ((R.grindPts = (R.grindPts || 0) + move) > 6) { R.grindPts = 0; S.score += 4 * comboMult(); }
+    for (let k = 0; k < 2; k++) fx.emit(R.px + rand(-0.2, 0.2), R.py + 0.05, 0.3, rand(-2.5, 2.5), rand(1, 3), rand(1, 4), 0.25, 0.18, pick(['#ffd54f', '#ff9800', '#ffffff']), 0.2);
+  } else if (R.grind) endGrind();
+  if (onTop && onTop.surf > 1.5 && !onTop.roofed) { onTop.roofed = true; R.roofs++; const p = 25 * comboMult(); S.score += p; addCombo(2); popText(`🚐 Roof run! +${p}`); dstat('roofs'); }
   if (R.inv > 0) R.inv -= dt; if (R.shake > 0) R.shake -= dt;
   player.root.position.set(R.px, R.py, 0);
-  player.root.rotation.z = (R.px - LANES[R.lane]) * 0.08;
-  player.root.visible = !(R.inv > 0 && Math.floor(S.t * 14) % 2 === 0);
-  poseHuman(player, R.py > 0.05 ? 'jump' : 'run', dt, R.speed / 14);
+  player.root.rotation.z = (R.px - LANES[R.lane]) * 0.06;
+  player.root.visible = !(R.inv > 0 && R.fire <= 0 && Math.floor(S.t * 14) % 2 === 0);
+  const animS = Math.min(2.3, 0.75 + R.speed / 38);
+  if (R.sl > 0) poseHuman(player, 'slide', dt);
+  else if (R.grind) { poseHuman(player, 'idle', dt); player.L.sh.rotation.z = 1.25; player.R.sh.rotation.z = -1.25; player.spine.rotation.x = 0.15; }
+  else poseHuman(player, !R.onGround ? 'jump' : 'run', dt, animS);
+  player.root.rotation.y = Math.PI + (R.grind ? 0.9 : 0);
   if (R.stumble > 0.4) player.root.rotation.x = Math.sin((0.9 - R.stumble) * 9) * 0.35; else player.root.rotation.x = 0;
-  R.dustT -= dt; if (R.dustT <= 0 && R.py < 0.05) { R.dustT = 0.05; fx.emit(R.px + rand(-0.2, 0.2), 0.12, 0.35, rand(-0.6, 0.6), rand(0.4, 1.0), rand(0.5, 1.5), 0.55, 0.45, '#e6c9a0', 2.2); }
+  R.dustT -= dt; if (R.dustT <= 0 && R.onGround && !R.grind && R.py < 0.3) { R.dustT = 0.05; fx.emit(R.px + rand(-0.2, 0.2), R.py + 0.12, 0.35, rand(-0.6, 0.6), rand(0.4, 1.0), rand(0.5, 1.5), 0.55, 0.45, '#e6c9a0', 2.2); }
+  emitTrails(dt);
   if (ev.mod.rain) for (let i = 0; i < 3; i++) fx.emit(R.px + rand(-14, 14), rand(8, 14), rand(-30, 4), 0, -26, 0, 0.5, 0.18, '#cfe8ff', 0);
   const nextStop = stopDist(R.stopIdx), moral = S.plan.road[R.moralIdx];
-  const moralD = moral ? stopDist(MORAL_AFTER[R.moralIdx]) + 30 : Infinity;
+  const moralD = moral ? stopDist(MORAL_AFTER[R.moralIdx]) + 40 : Infinity;
   R.nextRow -= move;
   if (R.nextRow <= 0) {
-    const arrive = R.dist - SPAWN_Z;
-    const quiet = inGateZone(arrive) || (arrive > moralD - 35 && arrive < moralD + 8) || arrive > RUN_LEN - 30;
-    if (!quiet) spawnRow();
-    else if (arrive < RUN_LEN - 30 && Math.random() < 0.5) { const l = Math.floor(Math.random() * 3); for (let k = 0; k < 4; k++) spawnOrb(LANES[l], 1.0, SPAWN_Z - k * 2.6); }
-    R.nextRow = rowGap() + rand(0, 6);
+    const arrive = R.dist - SPAWN_Z, gz = gateZone(arrive);
+    const quiet = gz === 2 || (arrive > moralD - 45 && arrive < moralD + 8) || arrive > RUN_LEN - 40;
+    let depth = 0;
+    if (!quiet) depth = spawnRow(gz === 1);
+    else if (arrive < RUN_LEN - 40 && Math.random() < 0.5) { const l = Math.floor(Math.random() * 3); for (let k = 0; k < 4; k++) spawnOrb(LANES[l], 1.0, SPAWN_Z - k * 2.6); }
+    R.nextRow = depth + (R.tightGap ? rand(3, 6) : rowGap() + rand(0, 6)); R.tightGap = false;
   }
-  const px = R.px, air = R.py > 0.6;
+  const px = R.px;
   for (let i = active.length - 1; i >= 0; i--) {
     const a = active[i]; a.obj.position.z += move * a.rel;
     if (a.type === 'okada') a.obj.position.x = LANES[a.lane] + Math.sin(S.t * 2 + i) * 0.25;
-    if (a.type === 'hawker') poseHuman(a.obj.userData.human, 'carry', dt, 0.6);
+    if (a.cross) { a.obj.position.x += a.vx * dt; if (Math.abs(a.obj.position.x) > 4.0) { a.vx *= -1; a.obj.position.x = clamp(a.obj.position.x, -4, 4); } a.lane = clamp(Math.round(a.obj.position.x / 3.2) + 1, 0, 2); a.obj.rotation.y = a.vx > 0 ? Math.PI / 2 : -Math.PI / 2; poseHuman(a.obj.userData.human, 'carry', dt, 1.2); }
+    else if (a.type === 'hawker') poseHuman(a.obj.userData.human, 'carry', dt, 0.6);
+    if (a.drop && a.obj.position.z > -60) { const b = a.obj.userData.bar; if (b.position.y > 1.55) { a.dropV += 30 * dt; b.position.y = Math.max(1.55, b.position.y - a.dropV * dt); if (b.position.y === 1.55) { a.drop = false; if (Math.abs(a.obj.position.z) < 60) { sfx.hit(); for (let k = 0; k < 8; k++) fx.emit(a.obj.position.x + rand(-1, 1), 1.5, a.obj.position.z, rand(-2, 2), rand(1, 3), 0, 0.5, 0.5, '#cfd8dc', 1); } } } }
     if (a.obj.userData.exhaust && (a.ex -= dt) <= 0) { a.ex = 0.07; const e = a.obj.userData.exhaust; fx.emit(a.obj.position.x + e[0], e[1], a.obj.position.z + e[2], rand(-0.3, 0.3), rand(0.6, 1.2), 1.5, 0.9, 0.55, '#8d8d8d', 2.5); }
     if (a.fly) { a.obj.position.y += a.fly * dt; a.fly -= 22 * dt; a.obj.rotation.x += dt * 7; a.obj.position.x += a.fx * dt; if (a.obj.position.y < -3) a.obj.position.z = 99; }
-    const z = a.obj.position.z, dx = Math.abs(a.obj.position.x - px);
-    if (!a.hit && Math.abs(z) < a.len / 2 + 0.45 && dx < 1.4 && !(a.jump && air) && (R.inv <= 0 || R.fire > 0)) {
-      a.hit = true;
-      if (onHit(a)) return;
+    const z = a.obj.position.z, dx = a.wide ? 0 : Math.abs(a.obj.position.x - px);
+    if (!a.hit && Math.abs(z) < a.len / 2 + 0.45 && dx < 1.4) {
+      let blocked;
+      if (a.slide) blocked = !(R.sl > 0) && R.py < a.over && !(a.drop && a.obj.userData.bar.position.y > 3.5);
+      else if (a.surf) blocked = R.py < a.surf - 0.9;
+      else blocked = !(a.jump && R.py > 0.6) && R.py < 1.6;
+      if (blocked && (R.inv <= 0 || R.fire > 0)) { a.hit = true; if (onHit(a)) return; }
+      else if (a.slide && R.sl > 0 && !a.slid) { a.slid = true; R.slides++; dstat('slides'); nearMiss('🛝 Slid under!', 12); }
     }
     if (!a.hit && !a.nm && z > -0.3 && z < a.len / 2 + 0.6) {
-      if (!a.jump && a.type !== 'hawker' && dx > 1.6 && dx < 3.9 && R.py < 0.8) { a.nm = true; nearMiss('😮 Close one!', 15); }
-      else if (a.jump && dx < 1.4 && air) { a.nm = true; nearMiss('🦘 Leap of faith!', 10); }
+      if (a.big && !a.parked && dx > 1.6 && dx < 3.9 && R.py < 0.8) { a.nm = true; nearMiss('😮 Close one!', 15); }
+      else if (a.jump && dx < 1.4 && R.py > 0.6) { a.nm = true; nearMiss('🦘 Leap of faith!', 10); }
     }
-    if (z > 22) { RW.remove(a.obj); freeObs[a.type].push(a.obj); active.splice(i, 1); }
+    if (z > 22 + a.len / 2) { RW.remove(a.obj); freeObs[a.key].push(a.obj); active.splice(i, 1); }
   }
   let hi = 0;
   orbs.forEach((o, i) => {
     if (o.on) {
       o.z += move;
-      if (R.magnet > 0 && o.z > -22 && o.z < 0.5) { o.x += (px - o.x) * Math.min(1, dt * 7); o.y += (R.py + 1 - o.y) * Math.min(1, dt * 7); }
-      if (Math.abs(o.z) < 1.0 && Math.abs(o.x - px) < 1.3 && Math.abs(o.y - (R.py + 1.0)) < 1.3) {
-        o.on = false; S.orbs++; addCombo(1); S.score += 10 * comboMult(); addLantern(1.2); sfx.orb(); scorePop();
+      if (R.magnet > 0 && o.z > -24 && o.z < 0.5) { o.x += (px - o.x) * Math.min(1, dt * 8); o.y += (R.py + 1 - o.y) * Math.min(1, dt * 8); }
+      if (Math.abs(o.z) < 1.0 + move && Math.abs(o.x - px) < 1.3 && Math.abs(o.y - (R.py + 1.0)) < 1.4) {
+        o.on = false; S.orbs++; R.earn++; addCombo(1); S.score += 10 * comboMult(); addLantern(1.2); sfx.orb(); scorePop();
+        if (++R.orbBuf >= 10) { dstat('orbs', R.orbBuf); R.orbBuf = 0; }
         for (let k = 0; k < 6; k++) fx.emit(o.x, o.y, o.z, rand(-2, 2), rand(0, 3), rand(-1, 1), 0.5, 0.35, '#fff3a0', 0.5);
       }
       if (o.z > 15) o.on = false;
     }
     const s = o.on ? 1 + Math.sin(S.t * 6 + i) * 0.1 : 0;
     _q.setFromAxisAngle(_up, S.t * 2 + i); _mtx.compose(_pv.set(o.x, o.y + Math.sin(S.t * 4 + i) * 0.12, o.z), _q, _sv.setScalar(s)); orbMesh.setMatrixAt(i, _mtx);
-    if (o.on && hi < halos.n - 1) { halos.pos.set([o.x, o.y, o.z], hi * 3); halos.col.set([1, 0.82, 0.3], hi * 3); halos.size[hi] = 2.8; halos.alpha[hi] = 0.85; hi++; }
+    if (o.on && hi < halos.n - 1 && o.z > -90) { halos.pos.set([o.x, o.y, o.z], hi * 3); halos.col.set([1, 0.82, 0.3], hi * 3); halos.size[hi] = 2.8; halos.alpha[hi] = 0.85; hi++; }
   });
   orbMesh.instanceMatrix.needsUpdate = true;
   // verse scrolls
   const vp = S.plan.verse.parts;
-  if (R.vGot < vp.length && R.dist >= R.nextScrollD && !inGateZone(R.dist - SPAWN_Z) && R.dist - SPAWN_Z < RUN_LEN - 40) {
+  if (R.vGot < vp.length && R.dist >= R.nextScrollD && !inGateZone(R.dist - SPAWN_Z) && !R.boss && R.dist - SPAWN_Z < RUN_LEN - 60) {
     const sc = scrolls.find(s => !s.on);
-    const lanes = shuffle([0, 1, 2]).filter(l => !active.some(a => a.lane === l && Math.abs(a.obj.position.z - SPAWN_Z) < 12));
+    const lanes = shuffle([0, 1, 2]).filter(l => !active.some(a => (a.wide || a.lane === l) && Math.abs(a.obj.position.z - SPAWN_Z) < 14 + a.len / 2));
     if (sc && lanes.length) { sc.on = true; sc.lane = lanes[0]; sc.obj.visible = true; sc.obj.position.set(LANES[sc.lane], 1.3, SPAWN_Z); R.nextScrollD = R.dist + R.scrollGap; }
     else R.nextScrollD = R.dist + 8;
   }
@@ -484,8 +771,8 @@ function updateRun(dt) {
     if (!sc.on) continue;
     sc.obj.position.z += move; if (R.magnet > 0 && sc.obj.position.z > -24) sc.obj.position.x += (px - sc.obj.position.x) * Math.min(1, dt * 6); sc.obj.rotation.y = Math.sin(S.t * 2) * 0.5; sc.obj.position.y = 1.3 + Math.sin(S.t * 4) * 0.15;
     if (hi < halos.n - 1) { halos.pos.set([sc.obj.position.x, sc.obj.position.y, sc.obj.position.z], hi * 3); halos.col.set([1, 0.95, 0.6], hi * 3); halos.size[hi] = 3.4; halos.alpha[hi] = 0.9; hi++; }
-    if (Math.abs(sc.obj.position.z) < 1.2 && Math.abs(sc.obj.position.x - px) < 1.4 && R.py < 1.8) {
-      sc.on = false; sc.obj.visible = false; R.vGot++; S.score += 25; addLantern(2); sfx.orb(); setTimeout(() => sfx.orb(), 90);
+    if (Math.abs(sc.obj.position.z) < 1.2 + move && Math.abs(sc.obj.position.x - px) < 1.4 && Math.abs(R.py + 0.9 - sc.obj.position.y) < 1.8) {
+      sc.on = false; sc.obj.visible = false; R.vGot++; S.score += 25; addLantern(2); sfx.orb(); setTimeout(() => sfx.orb(), 90); dstat('scrolls');
       for (let k = 0; k < 16; k++) fx.emit(sc.obj.position.x, 1.3, 0, rand(-2.5, 2.5), rand(0, 3.5), rand(-1, 1), 0.7, 0.45, '#fff1a8', 0.5);
       verseHUD(true);
       if (R.vGot >= vp.length) { sfx.good(); toast(`📜 Verse complete! ${S.plan.verse.ref} · bonus light at the camp gate`, 2600); }
@@ -499,8 +786,8 @@ function updateRun(dt) {
     const gi = R.stopIdx;
     if (!R.gate || R.gate.idx !== gi) R.gate = prepGate(gi);
     const g = R.gate, gd = gateDist(gi) - R.dist, rd = readDist();
-    answerGate.visible = gd < 175 && gd > -1.5; answerGate.position.z = -gd;
-    if (!g.called && gd < rd + 30) { g.called = true; toast(`🚌 Conductor: “${C.STOPS[gi]}! ${C.STOPS[gi]}! Enter with your change!”`, 1800); }
+    answerGate.visible = gd < rd + 60 && gd > -1.5; answerGate.position.z = -gd;
+    if (!g.called && gd < rd + 40) { g.called = true; toast(`🚌 Conductor: “${C.STOPS[gi]}! ${C.STOPS[gi]}! Enter with your change!”`, 1800); }
     if (!g.shown && gd < rd) { g.shown = true; showGateQ(g); clearObs(a => a.obj.position.z < -40 && a.rel < 1); }
     gateLanes.forEach((L, i) => { if (!g.done) L.curtain.material.opacity = 0.26 + 0.12 * Math.sin(S.t * 5 + i); else if (i === g.correctLane) L.curtain.material.opacity = 0.45 + 0.3 * Math.sin(S.t * 14); });
     if (!g.done && gd <= 0) judgeGate(g);
@@ -509,19 +796,25 @@ function updateRun(dt) {
   if (R.flash > 0) R.flash -= dt;
   for (let k = 0; k < 2; k++) {
     const idx = R.stopIdx + k; const b = bridges[idx % 2];
-    if (idx < C.STOPS.length - 1) { b.visible = true; b.position.z = -(stopDist(idx) - R.dist) - 2; if (b.userData.idx !== idx) { setBridgeSign(b, C.STOPS[idx], C.STOP_REGION[idx] + ' · BUS STOP'); b.userData.idx = idx; } }
+    if (idx < C.STOPS.length - 1) { b.visible = stopDist(idx) - R.dist < 340; b.position.z = -(stopDist(idx) - R.dist) - 2; if (b.userData.idx !== idx) { setBridgeSign(b, C.STOPS[idx], C.STOP_REGION[idx] + ' · KM ' + C.STOP_KM[idx]); b.userData.idx = idx; } }
     else b.visible = false;
   }
-  roadGate.visible = RUN_LEN - R.dist < 260; roadGate.position.z = -(RUN_LEN - R.dist) - 2;
+  roadGate.visible = RUN_LEN - R.dist < 300; roadGate.position.z = -(RUN_LEN - R.dist) - 2;
   if (moralNPC && moral) { moralNPC.root.position.z = -(moralD - R.dist); moralNPC.root.rotation.y = 0; poseHuman(moralNPC, 'wave', dt); moralNPC.mark.position.y = 3.1 + Math.sin(S.t * 6) * 0.15; }
   const prog = clamp(R.dist / RUN_LEN, 0, 1);
-  setSky('day', 'dusk', clamp((prog - 0.35) / 0.65, 0, 1), ev.mod.fog);
-  lanternLight.intensity = prog * 2.2 * S.lantern / 100;
+  // sky: day → evening → dusk along the journey, storm on Long Bridge
+  const stormK = R.boss && R.boss.id === 'storm' ? 1 : 0; R.stormK = (R.stormK || 0) + (stormK - (R.stormK || 0)) * Math.min(1, dt * 1.5);
+  PRESETS._base = prog < 0.6 ? blendPreset('day', 'evening', clamp((prog - 0.25) / 0.35, 0, 1)) : blendPreset('evening', 'dusk', clamp((prog - 0.6) / 0.4, 0, 1));
+  setSky('_base', 'storm', R.stormK, ev.mod.fog * (1 + R.stormK * 0.6));
+  if (R.stormK > 0.01 || R.cloudTint) { R.cloudTint = R.stormK > 0.01; const c = 1 - R.stormK * 0.62; clouds.children.forEach(o => o.material.color.setRGB(c, c, c * 1.05)); }
+  lanternLight.intensity = Math.max(prog, R.stormK) * 2.2 * S.lantern / 100;
   const sh = R.shake > 0 ? R.shake * 0.6 : 0;
-  R.camX += (R.px - R.camX) * Math.min(1, dt * 7);
-  camera.position.set(R.camX + rand(-sh, sh), 3.3 + R.py * 0.3 + rand(-sh, sh), 7.6);
-  camera.lookAt(R.camX, 1.25 + R.py * 0.2, -9);
-  const tf = R.fire > 0 ? 72 : 62 + Math.max(0, R.speed - 17) * 0.45;
+  R.camX += (R.px - R.camX) * Math.min(1, dt * 9);
+  R.camH = lerp(R.camH || 0, Math.max(0, R.py), Math.min(1, dt * 6));
+  const camY = 3.3 + R.camH * 0.95 - (R.sl > 0 ? 0.35 : 0);
+  camera.position.set(R.camX + rand(-sh, sh), camY + rand(-sh, sh), 7.6 + R.camH * 0.5 + Math.min(1.2, Math.max(0, R.speed - 30) * 0.03));
+  camera.lookAt(R.camX, 1.25 + R.py * 0.45, -9);
+  const tf = R.fire > 0 || R.burst > 0 ? 76 : 62 + clamp((R.speed - 22) * 0.22, 0, 11);
   if (Math.abs(camera.fov - tf) > 0.05) { camera.fov += (tf - camera.fov) * Math.min(1, dt * 3); camera.updateProjectionMatrix(); }
   speedFX(dt);
   sunFollow(R.px, 0);
@@ -555,23 +848,33 @@ function sunFollow(x, z) {
 
 /* ---- HUD ---- */
 let hudT = 0;
-function hudMode(m) { document.body.classList.toggle('inrun', m === 'run'); if (m !== 'run') { $('#darkV').style.opacity = 0; $('#speedLines').style.opacity = 0; $('#hCombo').classList.add('hidden'); $('#hPow').classList.add('hidden'); shieldBubble.visible = false; if (camera.fov !== 62) { camera.fov = 62; camera.updateProjectionMatrix(); } } $('#hud').classList.toggle('hidden', !m); $('#prompt').classList.add('hidden'); $('#hVerse').classList.toggle('hidden', m !== 'run'); $('#hQ').classList.add('hidden'); }
+function hudMode(m) { document.body.classList.toggle('inrun', m === 'run'); if (m !== 'run') { document.body.classList.remove('boss-storm', 'boss-goslow', 'boss-market'); ['zoneCard', 'bossCard', 'gust'].forEach(id => $('#' + id).classList.remove('show')); } if (m !== 'run') { $('#darkV').style.opacity = 0; $('#speedLines').style.opacity = 0; $('#hCombo').classList.add('hidden'); $('#hPow').classList.add('hidden'); shieldBubble.visible = false; if (camera.fov !== 62) { camera.fov = 62; camera.updateProjectionMatrix(); } } $('#hud').classList.toggle('hidden', !m); $('#prompt').classList.add('hidden'); $('#hVerse').classList.toggle('hidden', m !== 'run'); $('#hQ').classList.add('hidden'); }
 function hud(prog, info) {
   if ((hudT -= 1) > 0) return; hudT = 6;
   $('#hLant').style.width = S.lantern + '%'; $('#hFloor').style.left = S.floor + '%';
   $('#hScore').textContent = '✨ ' + S.score;
   if (S.mode === 'run') {
     const i = Math.min(R.stopIdx, C.STOPS.length - 1);
-    $('#hInfo').textContent = R.flash > 0 ? `📍 ${C.STOPS[R.stopIdx - 1]} ✓ · ${Math.round(R.speed * 3.6)} km/h` : `Ch.${save.chapter} · Next stop: ${C.STOPS[i]} · ${Math.max(0, Math.round((stopDist(i) - R.dist) * 1.5))}m`;
+    const km = KM(R.dist);
+    $('#hInfo').textContent = R.flash > 0 ? `📍 ${C.STOPS[R.stopIdx - 1]} ✓ · ${Math.round(R.speed * 3.6)} km/h` : `KM ${km.toFixed(1)} · Next: ${C.STOPS[i]} ${Math.max(0, C.STOP_KM[i] - km).toFixed(1)} km · ${Math.round(R.speed * 3.6)} km/h`;
     $('#hInfo').classList.toggle('flash', R.flash > 0);
+    $('#mapMe').style.left = (km / C.TOTAL_KM * 100).toFixed(2) + '%'; $('#mapFill').style.width = (km / C.TOTAL_KM * 100).toFixed(2) + '%';
   } else if (info) $('#hInfo').textContent = info;
   $('#hProg').style.width = (prog * 100).toFixed(1) + '%';
+}
+function buildMap() {
+  const st = $('#mapStops'); if (!st.dataset.built) {
+    st.dataset.built = 1;
+    const seg = Object.values(C.BOSSES).map(B => `<s class="bseg" style="left:${B.km0 / C.TOTAL_KM * 100}%;width:${(B.km1 - B.km0) / C.TOTAL_KM * 100}%"></s>`).join('');
+    st.innerHTML = seg + C.STOP_KM.map((k, i) => `<span class="mst ${i % 2 ? 'dn' : 'up'}${i === C.STOP_KM.length - 1 ? ' end' : ''}" style="left:${k / C.TOTAL_KM * 100}%"><i></i><em>${esc(C.MAP_LABELS[i])}</em></span>`).join('');
+  }
+  const b = M.bestKm(); $('#mapBest').style.left = (b / C.TOTAL_KM * 100) + '%'; $('#mapBest').classList.toggle('hidden', b < 0.5);
 }
 
 /* ---- quiz, gate ---- */
 function settleRunner() {
   if (camera.fov !== 62) { camera.fov = 62; camera.updateProjectionMatrix(); } player.root.rotation.x = 0;
-  R.jt = 0; R.py = 0; R.px = LANES[R.lane]; R.camX = R.px; R.inv = 0;
+  if (R.grind) endGrind(); R.vy = 0; R.onGround = true; R.sl = 0; R.jbuf = 0; R.sbuf = 0; R.py = 0; R.px = LANES[R.lane]; R.camX = R.px; R.inv = 0;
   player.root.position.set(R.px, 0, 0); player.root.rotation.z = 0; player.root.visible = true; poseHuman(player, 'idle', 0.016);
   // lift the view so the runner sits above the dialog sheet while paused
   camera.position.set(R.camX, 3.0, 7.6); camera.lookAt(R.camX, -1.9, -9);
@@ -579,7 +882,7 @@ function settleRunner() {
 const comboMult = () => 1 + Math.min(4, Math.floor(R.combo / 8));
 function addCombo(n) {
   const before = comboMult(); R.combo += n; R.comboT = 2.8;
-  if (comboMult() > before) { popText(`🔥 Combo x${comboMult()}!`, 'big'); sfx.stop(); }
+  if (comboMult() > before) { popText(`🔥 Combo x${comboMult()}!`, 'big'); sfx.stop(); if (comboMult() >= 4) dstat('combo4', 1, 'max'); }
   comboHUD();
 }
 function loseCombo() { if (R.combo >= 8) popText('Combo lost', 'dim'); R.combo = 0; R.comboT = 0; comboHUD(); }
@@ -593,9 +896,9 @@ function scorePop() { const el = $('#hScore'); el.classList.remove('bump'); void
 function shakeDOM(big) { const c = $('#c3d'); c.classList.remove('shake', 'shake2'); void c.offsetWidth; c.classList.add(big ? 'shake2' : 'shake'); }
 function snapCP(dist, stopIdx, name) { return { dist, stopIdx, name, vGot: R.vGot, S: { score: S.score, orbs: S.orbs, quizRight: S.quizRight, quizTotal: S.quizTotal, lantern: S.lantern, hits: S.hits } }; }
 function knock(a) { a.fly = 9; a.fx = (a.obj.position.x - R.px >= 0 ? 1 : -1) * 6; }
-const BIG_NAMES = { danfo: 'A danfo no gree brake!', truck: 'Trailer wahala!', okada: 'An okada swerved into you!' };
+const BIG_NAMES = { danfo: 'A danfo no gree brake!', truck: 'Trailer wahala!', okada: 'An okada swerved into you!', danfoP: 'You ran into a parked danfo!', danfoR: 'You missed the ramp and hit the danfo!', truckP: 'A stalled trailer blocked the way!', truckR: 'You missed the ramp and hit the trailer!' };
 function onHit(a) {
-  const big = !a.jump && a.type !== 'hawker';
+  const big = !!a.big;
   if (R.fire > 0) { knock(a); S.score += 20; popText('🔥 Smashed through! +20'); sfx.hit(); for (let k = 0; k < 14; k++) fx.emit(R.px + rand(-1, 1), rand(0.5, 2), -1, rand(-4, 4), rand(1, 4), rand(-3, 0), 0.6, 0.7, '#ff8a3d', 1); return false; }
   if (R.shield) {
     R.shield = false; R.inv = 1.2; knock(a); sfx.shield(); shakeDOM();
@@ -603,7 +906,7 @@ function onHit(a) {
     popText('🛡️ The Shield of Faith held!', 'big'); powerHUD(); return false;
   }
   for (let k = 0; k < 16; k++) fx.emit(R.px + rand(-0.6, 0.6), rand(0.3, 1.5), rand(-0.5, 0.5), rand(-3, 3), rand(1, 3), rand(-2, 2), 0.7, 0.8, '#d9b38c', 2);
-  if (big || R.t - R.lastStumble < 4) { crash(big ? BIG_NAMES[a.type] : 'You stumbled twice and the darkness caught up.'); return true; }
+  if (big || R.t - R.lastStumble < (R.boss && R.boss.id === 'storm' ? 7 : 4)) { crash(big ? BIG_NAMES[a.type] : 'You stumbled twice and the darkness caught up.'); return true; }
   R.lastStumble = R.t; R.stumble = 0.9; R.inv = 1.0; R.shake = 0.45; R.dark = 4; S.hits++;
   loseCombo(); S.score = Math.max(0, S.score - 30); addLantern(-6); sfx.hit(); shakeDOM();
   popText('Stumbled! −30', 'bad');
@@ -617,25 +920,25 @@ function updatePowers(dt) {
   if (R.shield) { R.shieldT -= dt; if (R.shieldT <= 0) { R.shield = false; powerHUD(); } }
   shieldBubble.visible = R.shield; if (R.shield) { shieldBubble.position.set(R.px, R.py + 1.2, 0); shieldBubble.material.opacity = 0.14 + 0.06 * Math.sin(S.t * 6); }
   if (R.dark > 0) { R.dark -= dt; for (let k = 0; k < 2; k++) fx.emit(R.px + rand(-5, 5), rand(0, 3), rand(2.5, 5), rand(-0.5, 0.5), rand(0, 0.6), rand(-2, -0.5), 0.9, 1.6, pick(['#2b2140', '#1d1830', '#3a2d55']), 1.4); }
-  const dv = $('#darkV'), dk = R.dark > 0 ? Math.min(1, R.dark / 1.2) : 0; dv.style.opacity = dk.toFixed(2);
+  const dv = $('#darkV'), dk = R.dark > 0 ? Math.min(1, R.dark / 1.2) * (R.boss && R.boss.id === 'storm' && R.dark < 1 ? 0.55 : 1) : 0; dv.style.opacity = dk.toFixed(2);
   if ((R.popT -= dt) <= 0) { R.popT = 0.25; powerHUD(true); }
   // spawn power-ups now and then
   if (R.dist >= R.nextPowerD && !inGateZone(R.dist - SPAWN_Z) && R.dist - SPAWN_Z < RUN_LEN - 60) {
     const k = pick(['shield', 'shield', 'lamp', 'lamp', 'fire']), pu = powerUps.find(p => p.k === k);
     const lanes = shuffle([0, 1, 2]).filter(l => !active.some(a => a.lane === l && Math.abs(a.obj.position.z - SPAWN_Z) < 14));
-    if (pu && !pu.on && lanes.length) { pu.on = true; pu.lane = lanes[0]; pu.g.visible = true; pu.g.position.set(LANES[pu.lane], 1.5, SPAWN_Z); R.nextPowerD = R.dist + rand(280, 400); }
+    if (pu && !pu.on && lanes.length) { pu.on = true; pu.lane = lanes[0]; pu.g.visible = true; pu.g.position.set(LANES[pu.lane], 1.5, SPAWN_Z); R.nextPowerD = R.dist + rand(520, 820); }
     else R.nextPowerD = R.dist + 10;
   }
   for (const pu of powerUps) {
     if (!pu.on) continue;
     pu.g.position.z += R.speed * dt; pu.ring.rotation.y += dt * 3; pu.g.position.y = 1.5 + Math.sin(S.t * 3) * 0.2;
-    if (Math.abs(pu.g.position.z) < 1.2 && Math.abs(pu.g.position.x - R.px) < 1.4 && R.py < 2) { pu.on = false; pu.g.visible = false; activatePower(pu.k); }
+    if (Math.abs(pu.g.position.z) < 1.2 + R.speed * dt && Math.abs(pu.g.position.x - R.px) < 1.4 && Math.abs(R.py + 1 - pu.g.position.y) < 2) { pu.on = false; pu.g.visible = false; activatePower(pu.k); }
     if (pu.g.position.z > 15) { pu.on = false; pu.g.visible = false; }
   }
 }
 function activatePower(k) {
   const P0 = POWERS[k]; sfx.power(); scorePop();
-  if (k === 'fire') { R.fire = P0.dur; R.dark = 0; }
+  if (k === 'fire') { R.fire = P0.dur; R.dark = 0; dstat('fire', 1, 'max'); }
   if (k === 'shield') { R.shield = true; R.shieldT = P0.dur; }
   if (k === 'lamp') R.magnet = P0.dur;
   for (let i = 0; i < 26; i++) fx.emit(R.px, 1.4, 0, rand(-4, 4), rand(0, 5), rand(-3, 3), 0.7, 0.6, k === 'fire' ? '#ffb300' : k === 'shield' ? '#9be7ff' : '#fff3a0', 0.6);
@@ -652,10 +955,12 @@ function powerHUD(tickOnly) {
   el.querySelector('b').style.width = pct.toFixed(0) + '%';
 }
 function speedFX() {
-  const k = R.fire > 0 ? 1 : clamp((R.speed - 17) / 9, 0, 0.75);
-  const sl = $('#speedLines'); sl.style.opacity = k.toFixed(2); sl.classList.toggle('fire', R.fire > 0);
+  const k = R.fire > 0 || R.burst > 0 ? 1 : clamp((R.speed - 30) / 30, 0, 0.75);
+  const sl = $('#speedLines'); sl.style.opacity = k.toFixed(2); sl.classList.toggle('fire', R.fire > 0 || R.burst > 0);
 }
 function crash(cause) {
+  if (R.boss) R.boss.crashes++; $('#gust').classList.remove('show');
+  bankRun(false);
   settleRunner(); S.paused = true; sfx.crash(); shakeDOM(true); loseCombo();
   R.fire = 0; R.magnet = 0; R.shield = false; R.dark = 0; shieldBubble.visible = false; $('#darkV').style.opacity = 0; $('#speedLines').style.opacity = 0; $('#hQ').classList.add('hidden'); powerHUD();
   player.root.rotation.x = -0.5; player.root.position.y = 0;
@@ -664,10 +969,11 @@ function crash(cause) {
 function showFallen(cause) {
   const v = pick(FALL_VERSES), m = $('#modalBody'), cp = R.cp, cost = 200;
   $('#toast').classList.remove('show');
-  const metres = Math.round(R.dist * 1.5);
+  const km = KM(R.dist), best = M.bestKm(), isBest = R.newBest;
   m.innerHTML = `<div class="banner dark"><div class="km">${esc(cause)}</div><div class="name">FALLEN, BUT NOT FORSAKEN</div></div>
     ${verseHTML(v)}
-    <div class="chips"><span class="chip">✨ ${S.score} light</span><span class="chip">📏 ${metres} m</span><span class="chip">📍 ${esc(C.STOPS[Math.min(R.stopIdx, C.STOPS.length - 1)])} next</span><span class="chip">📖 ${S.quizRight}/${S.quizTotal} gates</span></div>
+    <div class="reach"><div class="rk">You reached <b>${km.toFixed(1)} km</b> of ${C.TOTAL_KM} km</div><div class="rbar"><i style="width:${(km / C.TOTAL_KM * 100).toFixed(1)}%"></i><em style="left:${(best / C.TOTAL_KM * 100).toFixed(1)}%"></em></div><div class="small">${isBest ? '🏁 New best distance!' : `🏁 Best: ${best.toFixed(1)} km`} · ${esc(zoneAt(km).name)}</div></div>
+    <div class="chips"><span class="chip">✨ ${S.score} light</span><span class="chip">📍 ${esc(C.STOPS[Math.min(R.stopIdx, C.STOPS.length - 1)])} next</span><span class="chip">📖 ${S.quizRight}/${S.quizTotal} gates</span></div>
     ${!R.revived ? `<p class="small" style="margin:4px 0">You can <b>rise again</b> once per run:</p>
       <button class="btn green" id="riseQ">🙏 Rise again · answer a Bible question</button>
       <button class="btn primary" id="riseL" ${S.score < cost ? 'disabled' : ''}>✨ Rise again · spend ${cost} light${S.score < cost ? ' (not enough yet)' : ''}</button>` : '<p class="small">You have already risen once this run.</p>'}
@@ -706,10 +1012,20 @@ function revive(msg) {
 function restartFrom(cp) {
   hide('modal'); fadeFlash();
   Object.assign(S, cp.S); S.lantern = Math.max(S.lantern, S.floor);
-  Object.assign(R, { dist: cp.dist, stopIdx: cp.stopIdx, vGot: cp.vGot, nextScrollD: cp.dist + 40, nextPowerD: cp.dist + 120, gate: null, t: 0, combo: 0, comboT: 0, fire: 0, magnet: 0, shield: false, stumble: 0, lastStumble: -99, dark: 0, inv: 1.5, nextRow: 20, lane: 1, px: 0, camX: 0 });
+  if (R.boss) bossEnd(false);
+  Object.assign(R, { dist: cp.dist, stopIdx: cp.stopIdx, vGot: cp.vGot, nextScrollD: cp.dist + 60, nextPowerD: cp.dist + 200, gate: null, t: 0, combo: 0, comboT: 0, fire: 0, magnet: 0, shield: false, stumble: 0, lastStumble: -99, dark: 0, inv: 1.5, nextRow: 30, lane: 1, px: 0, camX: 0, py: 0, vy: 0, onGround: true, sl: 0, burst: 0, grind: false, zone: -1, kmInt: Math.floor(KM(cp.dist)), startT: cp.dist ? R.startT : performance.now() });
+  if (!cp.dist) R.bossDone = {};
   clearObs(); orbs.forEach(o => o.on = false); hideScrolls(); powerUps.forEach(p => { p.on = false; p.g.visible = false; });
   player.root.rotation.x = 0; verseHUD(); comboHUD(); powerHUD(); S.paused = false;
   toast(`↩ Back at ${cp.name}. Run with endurance! (Hebrews 12:1)`, 2200);
+}
+// bank the light earned this attempt, record distance, post to the youth-group board
+function bankRun(final) {
+  if (!R) return;
+  if (R.orbBuf) { dstat('orbs', R.orbBuf); R.orbBuf = 0; }
+  if (R.earn) { M.earn(R.earn); R.earn = 0; }
+  const km = final ? C.TOTAL_KM : KM(R.dist); R.newBest = M.recordKm(km);
+  const room = M.myRoom(); if (room && km >= 0.5) M.LB.submit(room.code, { name: save.name, km: +km.toFixed(1), score: S.score, week: M.weekKey(), at: Date.now() }).catch(() => {});
 }
 function fadeFlash() { const f = $('#fade'); f.style.transition = 'none'; f.style.opacity = 1; void f.offsetWidth; f.style.transition = 'opacity .5s ease-out'; f.style.opacity = 0; }
 function prepGate(idx) {
@@ -731,7 +1047,7 @@ function judgeGate(g) {
   const hq = $('#hQ');
   gateLanes.forEach((L, i) => { if (i === g.correctLane) { L.curtain.material.color.set('#ffd23f'); drawGateLabel(L.lab, right, GATE_COLS[i], 'ok'); } else drawGateLabel(L.lab, g.q[1][g.order[i]], GATE_COLS[i], 'dim'); });
   if (ok) {
-    S.quizRight++; addCombo(5); S.score += 50 * comboMult(); addLantern(5); sfx.good(); scorePop();
+    S.quizRight++; R.earn += 5; dstat('gates'); addCombo(5); S.score += 50 * comboMult(); addLantern(5); sfx.good(); scorePop();
     for (let k = 0; k < 34; k++) fx.emit(R.px + rand(-1.2, 1.2), rand(0.4, 3.2), rand(-1, 0.5), rand(-4, 4), rand(1, 5), rand(-2, 2), 0.9, 0.6, pick(['#fff3a0', '#ffd23f', '#ffffff']), 0.5);
     $('#hQq').textContent = `✅ Correct! +50 · ${right}`; $('#hQo').innerHTML = `<span class="note">${esc(note)}</span>`; hq.classList.add('ok');
     toast(`✅ Correct! +50 · ${note}`, 1800);
@@ -749,19 +1065,32 @@ function passStop(idx) {
   R.flash = 1.6; R.cp = snapCP(stopDist(idx) + 1, idx + 1, C.STOPS[idx]);
   for (let k = 0; k < 18; k++) fx.emit(rand(-6, 6), rand(5.5, 8), -2, rand(-2, 2), rand(0, 2), rand(-1, 1), 0.8, 0.6, '#fff3a0', 0.5);
 }
-function autoSteer(dt) {   // test helper (?autopilot): steer to the right gate / scroll, avoid traffic
+function autoSteer(dt) {   // test helper (?autopilot): steer to the right gate / scroll, slide, jump, use ramps and rails
   R.autoT -= dt;
   let want = R.lane; const g = R.gate, gd = g ? gateDist(g.idx) - R.dist : 1e9;
-  if (g && g.shown && !g.done && gd < 70) want = AUTO_MIX && g.idx === 1 ? (g.correctLane + 1) % 3 : g.correctLane;
-  else { const sc = scrolls.find(s => s.on && s.obj.position.z < -1 && s.obj.position.z > -50); if (sc) want = sc.lane; }
-  const danger = l => active.some(a => !a.hit && a.lane === l && !a.jump && a.obj.position.z > -16 && a.obj.position.z < 3);
+  if (g && g.shown && !g.done && gd < 90) want = AUTO_MIX && g.idx === 1 ? (g.correctLane + 1) % 3 : g.correctLane;
+  else { const sc = scrolls.find(s => s.on && s.obj.position.z < -1 && s.obj.position.z > -60); if (sc) want = sc.lane; else { const r = active.find(a => (a.grind || a.ramp) && a.obj.position.z > -60 && a.obj.position.z < -8); if (r && AUTO_FUN) want = r.lane; } }
+  const look = Math.max(18, R.speed * 0.42);
+  const wall = (a, l) => {
+    if (a.hit || a.fly || !(a.wide || a.lane === l)) return false;
+    const z = a.obj.position.z; if (z < -look || z > a.len / 2 + 1) return false;
+    if (a.cross) return Math.abs(a.obj.position.x - LANES[l]) < 2;
+    if (a.slide || a.jump) return false;
+    if (a.surf) { if (R.py >= a.surf - 0.9 && l === R.lane) return false; if (a.ramp && l === R.lane && (z + a.len / 2 + a.ramp < 0 || R.py >= a.surf * (1 - Math.max(0, -(z + a.len / 2)) / a.ramp) - 0.35)) return false; if (a.ramp && !a.big) return false; return true; }
+    return a.big || a.type === 'hawker';
+  };
+  const danger = l => active.some(a => wall(a, l));
   if (danger(want) && !(g && g.shown && !g.done && gd < 20)) { const alt = [0, 1, 2].filter(l => !danger(l)).sort((x, y) => Math.abs(x - R.lane) - Math.abs(y - R.lane))[0]; if (alt !== undefined) want = alt; }
-  if (want !== R.lane && R.autoT <= 0) { runMove(Math.sign(want - R.lane)); R.autoT = 0.16; }
-  if (active.some(a => !a.hit && a.lane === R.lane && a.jump && a.obj.position.z > -6 && a.obj.position.z < -2.5)) runJump();
+  if (want !== R.lane && R.autoT <= 0 && !danger(R.lane + Math.sign(want - R.lane)) ) { runMove(Math.sign(want - R.lane)); R.autoT = 0.12; }
+  else if (want !== R.lane && R.autoT <= 0 && danger(R.lane)) { runMove(Math.sign(want - R.lane)); R.autoT = 0.12; }
+  const T = airT(), jd = R.speed * T * 0.42;
+  if (R.onGround && active.some(a => !a.hit && a.lane === R.lane && a.jump && a.obj.position.z > -jd - 2.5 && a.obj.position.z < -jd + 1.5 && R.py < 0.5)) runJump();
+  if (R.sl <= 0.05 && active.some(a => !a.hit && a.slide && (a.wide || a.lane === R.lane) && a.obj.position.z > -R.speed * 0.2 - 2 && a.obj.position.z < 0.5)) runSlide();
 }
 function arriveGate() {
-  settleRunner();
-  S.paused = true;
+  settleRunner(); if (R.boss) bossEnd(true);
+  S.paused = true; R.earn += 50; bankRun(true);
+  const secs = Math.round((performance.now() - R.startT) / 1000 * TIME_SCALE), bosses = Object.keys(R.bossDone).map(k => C.BOSSES[k].icon).join(' ');
   const m = $('#modalBody'), q = S.plan.quest, v = S.plan.verse, full = v.parts.join(' ');
   S.vGot = R.vGot; S.verseDone = R.vGot >= v.parts.length;
   let verseCard;
@@ -771,7 +1100,8 @@ function arriveGate() {
     verseCard = `<div class="vmem"><div class="vt">📜 VERSE MEMORISED · +300 · 🏮 +10</div><div class="vx">“${esc(full)}”</div><b>${esc(v.ref)} (KJV)</b><div class="small">Saved to <b>My Verses</b> on the title screen. Say it out loud once more!</div></div>`;
   } else verseCard = `<div class="vmem partial"><div class="vt">📜 ${R.vGot}/${v.parts.length} parts of ${esc(v.ref)}</div><div class="vx">${v.parts.map((p, i) => i < R.vGot ? esc(p) : '▢').join(' ')}</div><div class="small">Grab every scroll to memorise it. It'll come back next chapter.</div></div>`;
   m.innerHTML = `<div class="banner purple"><div class="km">KM 46 · LAGOS–IBADAN EXPRESSWAY</div><div class="name">REDEMPTION CITY</div></div>
-    <h2 style="text-align:center">🎉 You made it, ${esc(save.name)}!</h2>
+    <h2 style="text-align:center">🎉 You ran all ${C.TOTAL_KM} km, ${esc(save.name)}!</h2>
+    <div class="reach"><div class="rk">Lagos ➜ <b>Redemption City</b> · ${Math.floor(secs / 60)}:${String(secs % 60).padStart(2, '0')}</div><div class="rbar"><i style="width:100%"></i></div><div class="small">${bosses ? 'Bosses beaten: ' + bosses : 'Survive the storm, the go-slow and the market rush for big bonuses!'} · +50 💡</div></div>
     <div class="chips"><span class="chip">✨ ${S.orbs} orbs</span><span class="chip">📖 ${S.quizRight}/${S.quizTotal} gates</span><span class="chip">🤲 ${S.helpedRun} helped</span><span class="chip dim">💥 ${S.hits} bumps</span></div>
     ${verseCard}
     <p>Lantern: <b>${Math.round(S.lantern)}%</b> · Score: <b>${S.score}</b></p><div class="meter"><i style="width:${S.lantern}%"></i></div>
@@ -794,7 +1124,7 @@ function openDialog(enc, runMoral, onDone, zone) {
   function choose(c) {
     const chips = [];
     if (c.good) {
-      const vk = c.virtue || enc.virtue; S.virtues[vk] = (S.virtues[vk] || 0) + 1;
+      const vk = c.virtue || enc.virtue; S.virtues[vk] = (S.virtues[vk] || 0) + 1; dstat('help');
       const light = c.light || 12;
       if (runMoral) { S.floor = Math.min(70, S.floor + 8); S.score = Math.max(0, S.score - 40); S.helpedRun++; chips.push(`<span class="chip dim">⏱ −40 (time)</span>`, `<span class="chip">🏮 Lasting light +8</span>`); }
       else { S.score += 100; chips.push(`<span class="chip">✨ +100</span>`); }
@@ -1079,6 +1409,7 @@ window.addEventListener('keydown', e => {
     if (['ArrowLeft', 'a', 'A'].includes(e.key)) runMove(-1);
     if (['ArrowRight', 'd', 'D'].includes(e.key)) runMove(1);
     if (['ArrowUp', 'w', 'W', ' '].includes(e.key)) { runJump(); e.preventDefault(); }
+    if (['ArrowDown', 's', 'S'].includes(e.key)) { runSlide(); e.preventDefault(); }
   }
   if (S.mode === 'camp' && (e.key === 'e' || e.key === 'Enter') && promptFn) promptFn();
 });
@@ -1090,8 +1421,11 @@ canvas.addEventListener('pointermove', e => {
   if (S.paused) return;
   const dx = ptr.x - ptr.x0, dy = ptr.y - ptr.y0;
   if (S.mode === 'run' && !ptr.done) {
-    if (Math.abs(dx) > 26 && Math.abs(dx) > Math.abs(dy)) { runMove(Math.sign(dx)); ptr.done = true; }
-    else if (dy < -26 && Math.abs(dy) > Math.abs(dx)) { runJump(); ptr.done = true; }
+    let act = 0;
+    if (Math.abs(dx) > 18 && Math.abs(dx) > Math.abs(dy)) { runMove(Math.sign(dx)); act = 1; }
+    else if (dy < -18 && Math.abs(dy) > Math.abs(dx)) { runJump(); act = 1; }
+    else if (dy > 18 && Math.abs(dy) > Math.abs(dx)) { runSlide(); act = 1; }
+    if (act) { ptr.acted = true; ptr.x0 = ptr.x; ptr.y0 = ptr.y; }   // chain swipes in one touch
   }
   if (S.mode === 'camp' && K) {
     const d = Math.hypot(dx, dy);
@@ -1101,7 +1435,7 @@ canvas.addEventListener('pointermove', e => {
 canvas.addEventListener('pointerup', e => {
   if (ptr && !S.paused) {
     const quick = performance.now() - ptr.t < 320 && Math.hypot(ptr.x - ptr.x0, ptr.y - ptr.y0) < 12;
-    if (S.mode === 'run' && !ptr.done && quick) runJump();
+    if (S.mode === 'run' && !ptr.acted && quick) runJump();
     if (S.mode === 'camp' && K && quick) {
       _ndc.set(e.clientX / window.innerWidth * 2 - 1, -(e.clientY / window.innerHeight) * 2 + 1); ray.setFromCamera(_ndc, camera);
       const hit = new THREE.Vector3(); if (ray.ray.intersectPlane(groundPlane, hit)) { K.tx = hit.x; K.tz = hit.z; for (let i = 0; i < 6; i++) fx.emit(hit.x, 0.2, hit.z, Math.cos(i) * 2, 0.5, Math.sin(i) * 2, 0.4, 0.3, '#ffd23f', 1); }
@@ -1115,7 +1449,7 @@ canvas.addEventListener('pointerup', e => {
    ========================================================= */
 let titleDanfo = null;
 function enterTitle() {
-  S.mode = 'title'; S.paused = false; RW.visible = true; CW.visible = false; hudMode(null); setMoralNPC(null); clearObs(); orbs.forEach(o => o.on = false); hideOrbs();
+  S.mode = 'title'; S.paused = false; S.shop = false; RW.visible = true; CW.visible = false; hudMode(null); resetGround(); hide('shop'); setMoralNPC(null); clearObs(); orbs.forEach(o => o.on = false); hideOrbs();
   buildPlayer();
   player.root.position.set(0.6, 0, 0); player.root.visible = true; player.root.rotation.set(0, Math.PI, 0);
   if (!titleDanfo) { titleDanfo = danfo(); titleDanfo.traverse(o => { if (o.isMesh && !o.userData.outline) o.castShadow = true; }); RW.add(titleDanfo); }
@@ -1127,6 +1461,10 @@ function enterTitle() {
   const hs = JSON.parse(localStorage.getItem('lr3d_high') || 'null');
   const mv = myVerses().length; $('#btnVerses').textContent = `📜 My Verses (${mv})`;
   $('#hiscore').textContent = hs ? `🏆 Best on this phone: ${hs.score} by ${hs.name} (Chapter ${hs.chapter})` : '';
+  const st = M.dailyState(), dl = M.dailyFor(st.day), dn = dl.filter(c => st.done[c.id]).length, w = M.wallet(), bk = M.bestKm();
+  $('#btnDaily').innerHTML = `📅 Daily <b>${dn}/3</b>`; $('#btnShop').innerHTML = `🛍️ Shop <b>💡${w.light}</b>`;
+  $('#streakNote').textContent = M.streakNote() + (bk >= 0.5 ? ` · 🏁 Best ${bk.toFixed(1)} km` : '');
+  const ch = $('#challenge'); if (CHALLENGE) { ch.classList.remove('hidden'); ch.innerHTML = `⚔️ <b>${esc(CHALLENGE.from)}</b> ran <b>${CHALLENGE.km.toFixed(1)} km</b>. Can you beat it?${CHALLENGE.room ? ` · Room ${esc(CHALLENGE.room)}` : ''}`; } else ch.classList.add('hidden');
 }
 function updateTitle(dt) {
   moveProps(9 * dt);
@@ -1149,7 +1487,8 @@ function enterSelect() {
 }
 function paintSelect() {
   document.querySelectorAll('#segGender button').forEach(b => b.classList.toggle('on', b.dataset.g === selG));
-  $('#segOutfit').innerHTML = PLAYER_OUTFITS[selG].map((o, i) => `<button data-o="${i}" class="${i === selO ? 'on' : ''}">${esc(o.label)}</button>`).join('');
+  if (!outfitOwned(selO)) selO = 0;
+  $('#segOutfit').innerHTML = allOutfits(selG).map((o, i) => outfitOwned(i) ? `<button data-o="${i}" class="${i === selO ? 'on' : ''}">${esc(o.label)}</button>` : '').join('');
   $('#segOutfit').querySelectorAll('button').forEach(b => b.addEventListener('click', () => { selO = +b.dataset.o; sfx.tap(); paintSelect(); }));
   $('#skins').innerHTML = SKINS.map((c, i) => `<button data-s="${i}" class="${i === selS ? 'on' : ''}" style="background:${c}" aria-label="Skin tone ${i + 1}"></button>`).join('');
   $('#skins').querySelectorAll('button').forEach(b => b.addEventListener('click', () => { selS = +b.dataset.s; sfx.tap(); paintSelect(); }));
@@ -1159,6 +1498,8 @@ function paintSelect() {
 document.querySelectorAll('#segGender button').forEach(b => b.addEventListener('click', () => { selG = b.dataset.g; selO = 0; sfx.tap(); paintSelect(); }));
 function updateSelect(dt) {
   player.root.rotation.y = Math.sin(S.t * 0.8) * 0.7; poseHuman(player, 'idle', dt);
+  if (S.shop && S.shopTrail && S.shopTrail !== 't_none' && Math.random() < 0.6) { const t = S.shopTrail; const x = rand(-0.3, 0.3); if (t === 't_gold') fx.emit(x, 0.1, 0, 0, rand(0.3, 0.8), rand(1, 2), 0.8, 0.35, '#ffd23f', 0.6); else if (t === 't_rainbow') ['#ff1744', '#ff9100', '#ffea00', '#00e676', '#2979ff', '#d500f9'].forEach((c, i) => fx.emit(-0.5 + i * 0.2, 0.2, 0, 0, 0.1, 2, 0.8, 0.3, c, 0.2)); else fx.emit(rand(-0.6, 0.6), 1.4, -0.2, rand(-1, 1), rand(0.2, 0.8), 1.5, 0.8, 0.36, '#ffffff', 0.8); }
+  if (S.shop && lantern && Math.random() < 0.4) { lantern.getWorldPosition(_pv); const L = M.shopItem(M.wallet().lantern); fx.emit(_pv.x, _pv.y, _pv.z, rand(-0.2, 0.2), rand(0.2, 0.6), 1.2, 0.7, 0.25, (L && L.trail) || '#ffd27a', 1); }
   camera.position.lerp(_pv.set(0, 2.0, 6.8), Math.min(1, dt * 4)); camera.lookAt(0, -0.3, 0);
   sunFollow(0, 0); fx.update(dt, 0, 0); lanternHalo(0);
 }
@@ -1190,6 +1531,103 @@ $('#btnGo').addEventListener('click', () => {
   Object.assign(save, { name, gender: selG, outfit: selO, skin: selS }); persist();
   hide('select'); buildPlayer(); chapterIntro();
 });
+
+/* =========================================================
+   META SCREENS: daily challenges, shop, youth-group leaderboard
+   ========================================================= */
+const LANTERN_KIND = { l_hurricane: 'hurricane', l_star: 'star', l_dove: 'dove', l_flame: 'flame' };
+function allOutfits(g) { return [...PLAYER_OUTFITS[g], ...SHOP_OUTFITS.map(o => o[g])]; }
+function outfitOwned(i) { return i < 3 || M.wallet().owned.includes(SHOP_OUTFITS[i - 3]?.id); }
+function dailyHTML() {
+  const st = M.dailyState(), list = M.dailyFor(st.day), sk = M.streak(), v = M.dailyVerse();
+  const done = list.filter(c => st.done[c.id]).length;
+  const dots = Array.from({ length: 7 }, (_, i) => `<i class="${i < (sk.n % 7 || (sk.n ? 7 : 0)) ? 'on' : ''}">${i === 6 ? '🎁' : i + 1}</i>`).join('');
+  return `<h2>📅 Today's challenges</h2>
+    ${list.map(c => { const p = Math.min(c.n, st.prog[c.id] || 0); return `<div class="dch ${st.done[c.id] ? 'done' : ''}"><div class="dt">${st.done[c.id] ? '✅' : '⬜'} ${esc(c.t)}<b>+${c.r} 💡</b></div><div class="dbar"><i style="width:${(p / c.n * 100).toFixed(0)}%"></i></div><div class="small">${p}/${c.n}</div></div>`; }).join('')}
+    <p class="small">${done}/3 done · finish all three for a <b>+150 💡</b> bonus. New challenges every day.</p>
+    <h3>🔥 Streak: ${sk.n} day${sk.n === 1 ? '' : 's'} <span class="small">(best ${sk.best})</span></h3><div class="streak">${dots}</div>
+    <p class="small">${esc(M.streakNote())}. Day 7 gives a big bonus.</p>
+    <h3>📖 Today's memory verse</h3><div class="verse">“${esc(v.parts.join(' '))}”<b>${esc(v.ref)} (KJV)</b></div>`;
+}
+$('#btnDaily').addEventListener('click', () => {
+  ensureAudio(); sfx.tap();
+  $('#modalBody').innerHTML = dailyHTML() + '<button class="btn primary" id="dClose">Let\'s run ▶</button>';
+  show('modal'); $('#modalBody').scrollTop = 0; $('#dClose').onclick = () => hide('modal');
+});
+/* ---- shop ---- */
+let shopTab = 'outfits', shopFrom = 'title', shopSel = null;
+function openShop(from) {
+  shopFrom = from; hide('title'); hide('select'); S.mode = 'select'; S.shop = true;
+  if (titleDanfo) titleDanfo.visible = false;
+  shopSel = null; previewShop(); paintShop(); show('shop');
+}
+function previewShop() {
+  const w = M.wallet(), base = save || freshSave(), sv = { ...base, gender: selG ?? base.gender, skin: selS ?? base.skin, outfit: selO ?? base.outfit };
+  let lant = w.lantern; S.shopTrail = w.trail;
+  if (shopSel) { const it = M.shopItem(shopSel); if (shopSel.startsWith('o_')) sv.outfit = 3 + SHOP_OUTFITS.findIndex(o => o.id === shopSel); if (shopSel.startsWith('l_')) lant = shopSel; if (shopSel.startsWith('t_')) S.shopTrail = shopSel; void it; }
+  buildPlayer(sv, lant); player.root.position.set(0, 0, 0); player.root.rotation.y = 0; player.root.visible = true;
+}
+function paintShop() {
+  const w = M.wallet(), items = M.SHOP[shopTab];
+  const owned = id => w.owned.includes(id), equipped = id => id === w.lantern || id === w.trail || (id.startsWith('o_') && save && save.outfit === 3 + SHOP_OUTFITS.findIndex(o => o.id === id));
+  const sel = shopSel && M.shopItem(shopSel);
+  $('#shopBody').innerHTML = `<div class="shead"><h2>🛍️ Pilgrim shop</h2><div class="wal">💡 ${w.light}</div></div>
+    <div class="seg tabs">${['outfits', 'lanterns', 'trails'].map(t => `<button data-t="${t}" class="${t === shopTab ? 'on' : ''}">${{ outfits: '👕 Outfits', lanterns: '🏮 Lanterns', trails: '✨ Trails' }[t]}</button>`).join('')}</div>
+    <div class="sgrid">${items.map(it => `<button class="sit ${shopSel === it.id ? 'sel' : ''} ${owned(it.id) ? 'own' : ''}" data-id="${it.id}"><div class="ic">${it.icon}</div><div class="nm">${esc(it.name)}</div><div class="pr">${equipped(it.id) ? '✔ On' : owned(it.id) ? 'Owned' : `💡 ${it.price}`}</div></button>`).join('')}</div>
+    ${sel ? `<div class="sdet"><b>${sel.icon} ${esc(sel.name)}</b><div class="small">${esc(sel.note)}</div>
+      ${owned(sel.id) ? (equipped(sel.id) ? '<button class="btn slim" disabled>Equipped ✔</button>' : '<button class="btn green slim" id="sEquip">Equip</button>') : `<button class="btn primary slim" id="sBuy" ${w.light < sel.price ? 'disabled' : ''}>${w.light < sel.price ? `Need ${sel.price - w.light} more 💡` : `Buy for 💡 ${sel.price}`}</button>`}</div>` : '<p class="small">Tap an item to preview it. Earn 💡 light by collecting orbs, answering gates, daily challenges, streaks and boss runs.</p>'}
+    <button class="btn ghost" id="sClose">Done</button>`;
+  $('#shopBody').querySelectorAll('[data-t]').forEach(b => b.onclick = () => { sfx.tap(); shopTab = b.dataset.t; shopSel = null; previewShop(); paintShop(); });
+  $('#shopBody').querySelectorAll('[data-id]').forEach(b => b.onclick = () => { sfx.tap(); shopSel = b.dataset.id; previewShop(); paintShop(); });
+  if ($('#sBuy')) $('#sBuy').onclick = () => { const w2 = M.wallet(); if (w2.light < sel.price) return; w2.light -= sel.price; w2.owned.push(sel.id); M.saveWallet(w2); sfx.power(); toast(`🎉 Unlocked: ${sel.name}!`); equip(sel.id); };
+  if ($('#sEquip')) $('#sEquip').onclick = () => { sfx.good(); equip(sel.id); };
+  $('#sClose').onclick = closeShop;
+}
+function equip(id) {
+  const w = M.wallet();
+  if (id.startsWith('l_')) w.lantern = id; else if (id.startsWith('t_')) w.trail = id;
+  else { selO = 3 + SHOP_OUTFITS.findIndex(o => o.id === id); if (save) { save.outfit = selO; persist(); } }
+  M.saveWallet(w); previewShop(); paintShop();
+}
+function closeShop() { sfx.tap(); hide('shop'); S.shop = false; S.shopTrail = null; if (shopFrom === 'select') { S.mode = 'select'; show('select'); paintSelect(); } else enterTitle(); }
+$('#btnShop').addEventListener('click', () => { ensureAudio(); sfx.tap(); const base = save || freshSave(); selG = base.gender; selO = base.outfit; selS = base.skin; openShop('title'); });
+$('#btnSelShop').addEventListener('click', () => { sfx.tap(); openShop('select'); });
+/* ---- youth group leaderboard ---- */
+async function openBoard() {
+  const m = $('#modalBody'), room = M.myRoom(), best = M.bestKm(), name = (save && save.name) || localStorage.getItem('lr_name') || 'Pilgrim';
+  const mode = `<p class="small lbmode">${M.LB.mode === 'local' ? '🧪 <b>Demo mode:</b> scores are kept on this phone until the group server is switched on. Room codes and WhatsApp challenges already work.' : '🟢 Live board: everyone in your room sees the same scores.'}</p>`;
+  if (!room) {
+    m.innerHTML = `<h2>🏆 Youth group board</h2><p>Race your youth fellowship from Lagos to KM 46. Weekly board, resets every Monday.</p>
+      <input id="lbName" maxlength="24" placeholder="Group name (e.g. RCCG Youth, Surulere)">
+      <button class="btn primary" id="lbCreate">Create a room</button>
+      <div class="or">or join with a code</div>
+      <input id="lbCode" maxlength="6" placeholder="ROOM CODE" style="text-transform:uppercase;letter-spacing:4px;text-align:center">
+      <button class="btn green" id="lbJoin">Join room</button>${mode}<button class="btn ghost" id="lbClose">Close</button>`;
+    show('modal');
+    $('#lbCreate').onclick = async () => { try { const r = await M.LB.createRoom(($('#lbName').value.trim() || 'Youth group').slice(0, 24)); M.setMyRoom(r); sfx.good(); openBoard(); } catch (e) { toast('Could not create the room. Check your connection.'); } };
+    $('#lbJoin').onclick = async () => { const c = $('#lbCode').value.trim().toUpperCase(); if (c.length < 4) return toast('Enter the room code'); try { const r = await M.LB.joinRoom(c); M.setMyRoom(r); sfx.good(); openBoard(); } catch (e) { toast('Room not found. Check the code.'); } };
+    $('#lbClose').onclick = () => hide('modal');
+    return;
+  }
+  m.innerHTML = `<h2>🏆 ${esc(room.name)}</h2><div class="rcode">Room code <b>${esc(room.code)}</b></div><div id="lbList" class="small">Loading this week's board…</div>${mode}
+    <button class="btn green" id="lbWa">📲 Challenge on WhatsApp</button><button class="btn" id="lbCopy">🔗 Copy challenge link</button>
+    <div class="row2"><button class="btn ghost" id="lbLeave">Leave room</button><button class="btn primary" id="lbClose">Close</button></div>`;
+  show('modal'); m.scrollTop = 0;
+  const link = M.challengeLink(location.href, room, best, name);
+  const text = `🏮 Redemption City: Light Run\nI ran ${best.toFixed(1)} km of 46 km from Lagos to Redemption City! Can you beat my distance? 🏃🏾‍♂️\nJoin our youth group room ${room.code}: ${link}`;
+  $('#lbWa').onclick = () => { sfx.tap(); window.open(M.whatsappURL(text), '_blank'); };
+  $('#lbCopy').onclick = () => copyText(text);
+  $('#lbLeave').onclick = () => { M.setMyRoom(null); sfx.tap(); openBoard(); };
+  $('#lbClose').onclick = () => hide('modal');
+  try {
+    const rows = await M.LB.top(room.code, M.weekKey());
+    $('#lbList').innerHTML = rows.length ? `<ol class="lb">${rows.map((r, i) => `<li class="${r.name === name ? 'me' : ''}"><span>${['🥇', '🥈', '🥉'][i] || i + 1}</span><b>${esc(r.name)}</b><em>${(+r.km).toFixed(1)} km</em><small>${r.score}</small></li>`).join('')}</ol>` : '<p>No runs yet this week. Be the first!</p>';
+  } catch (e) { $('#lbList').textContent = 'Could not load the board right now.'; }
+}
+$('#btnBoard').addEventListener('click', () => { ensureAudio(); sfx.tap(); openBoard(); });
+// deep link: ?room=CODE&beat=12.3&from=Tobi
+const CHALLENGE = params.get('beat') ? { km: +params.get('beat'), from: (params.get('from') || 'A friend').slice(0, 24), room: (params.get('room') || '').toUpperCase().slice(0, 6) } : null;
+if (CHALLENGE && CHALLENGE.room && !M.myRoom()) M.LB.joinRoom(CHALLENGE.room).then(r => M.setMyRoom(r)).catch(() => {});
 
 function planChapter() {
   const ch = save.chapter;
@@ -1321,4 +1759,9 @@ window.LR = {
   get gate() { return R && R.gate ? { idx: R.gate.idx, shown: R.gate.shown, done: R.gate.done, gd: gateDist(R.gate.idx) - R.dist, lane: R.lane, correct: R.gate.correctLane } : null; },
   get run() { return R ? { combo: R.combo, fire: R.fire, shield: R.shield, magnet: R.magnet, dark: R.dark, revived: R.revived, cp: R.cp && R.cp.name, speed: R.speed, vGot: R.vGot, parts: S.plan.verse.parts.length, quizRight: S.quizRight, quizTotal: S.quizTotal, moral: R.moralIdx } : null; },
   get encCount() { return K ? K.enc.length : 0; },
+  pattern(k) { FORCE.pattern = k; if (R) R.nextRow = Math.min(R.nextRow, 1); },
+  km(k) { if (!R) return; if (R.boss) bossEnd(false); R.dist = k * UPK; R.stopIdx = STOP_D.findIndex(d => d > R.dist); R.gate = null; R.kmInt = Math.floor(k); R.nextScrollD = R.dist + 100; clearObs(); R.nextRow = 30; R.zone = -1; },
+  get j() { return R ? { km: KM(R.dist), zone: zoneAt(KM(R.dist)).id, boss: R.boss && R.boss.id, bossDone: Object.keys(R.bossDone), py: R.py, onGround: R.onGround, sl: R.sl, grind: R.grind, grindM: R.grindM, roofs: R.roofs, slides: R.slides, speed: R.speed, lane: R.lane, burst: R.burst } : null; },
+  get meta() { return { wallet: M.wallet(), daily: M.dailyState(), list: M.dailyFor().map(c => c.id), streak: M.streak(), best: M.bestKm(), room: M.myRoom() }; },
+  give(n) { M.earn(n); },
 };

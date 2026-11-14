@@ -621,3 +621,26 @@ export const STUDY = [
     ['Which prophet answered God, "Here am I; send me"?', ['Isaiah', 'Jonah', 'Jeremiah', 'Elijah'], 0, 'Isaiah 6:8.'],
   ] },
 ];
+
+/* ---- Continuous journey: approximate km along the Lagos–Ibadan Expressway (game scale) ---- */
+export const TOTAL_KM = 46;
+export const STOP_KM = [2, 6, 9, 16, 19, 24, 28, 32, 36, 46];
+export const MAP_LABELS = ['Ojota', 'Berger', 'Kara', 'Warewa', 'Arepo', 'Magboro', 'Ibafo', 'Asese', 'Mowe', 'RCCG'];
+export const ZONES = [
+  { id: 'ojota', name: 'Ojota Interchange', sub: 'Lagos traffic · keep your eyes open', km: 0, traffic: 1.35, grass: '#9ccc65', flyover: true },
+  { id: 'berger', name: 'Berger', sub: 'Gateway to the expressway', km: 4.2, traffic: 1.2, grass: '#a5d66b' },
+  { id: 'kara', name: 'Kara Cattle Market', sub: 'Cows and herders by the road', km: 7.6, traffic: 1.05, grass: '#d9b26a', cows: true },
+  { id: 'bridge', name: 'Long Bridge', sub: 'Lagoon on both sides', km: 10.2, traffic: 1, water: true, boss: 'storm' },
+  { id: 'warewa', name: 'Warewa', sub: 'Welcome to Ogun State', km: 14.6, traffic: 1.05, grass: '#7cc444' },
+  { id: 'arepo', name: 'Arepo', sub: 'Estates and palm trees', km: 17.6, traffic: 1.1, grass: '#6cc23d' },
+  { id: 'magboro', name: 'Magboro', sub: 'Keep the pace, pilgrim', km: 21.5, traffic: 1.15, grass: '#76c442' },
+  { id: 'ibafo', name: 'Ibafo', sub: 'Brake lights ahead…', km: 26.2, traffic: 1.25, grass: '#8bc34a', boss: 'goslow' },
+  { id: 'asese', name: 'Asese', sub: 'Church billboards everywhere', km: 30.8, traffic: 1.15, grass: '#7cc444' },
+  { id: 'mowe', name: 'Mowe Market', sub: 'Busy market, mind the hawkers', km: 34.4, traffic: 1.2, grass: '#c8b07a', market: true, boss: 'market' },
+  { id: 'final', name: 'The Final Stretch', sub: 'Redemption City is near!', km: 39.2, traffic: 1.25, grass: '#6cc23d' },
+];
+export const BOSSES = {
+  storm: { km0: 10.7, km1: 14.2, icon: '⛈️', title: 'STORM ON LONG BRIDGE', sub: 'Wind, rain and darkness. Hold on!', reward: 500, win: ['And he arose, and rebuked the wind, and said unto the sea, Peace, be still. And the wind ceased, and there was a great calm.', 'Mark 4:39'], winTitle: '🕊️ Peace, be still!' },
+  goslow: { km0: 28.5, km1: 30.6, icon: '🚗', title: 'IBAFO GO-SLOW', sub: 'Weave the jam · hop the danfo roofs!', reward: 400, win: ['I can do all things through Christ which strengtheneth me.', 'Philippians 4:13'], winTitle: '🙌 Through the go-slow!' },
+  market: { km0: 36.5, km1: 38.9, icon: '🛒', title: 'MOWE MARKET RUSH', sub: 'Dodge hawkers · duck the awnings!', reward: 400, win: ['Let us run with patience the race that is set before us.', 'Hebrews 12:1'], winTitle: '🏃🏾 Market cleared!' },
+};
