@@ -510,3 +510,114 @@ export function storyBeat(ch) {
     intro: `Chapter ${n}. Brother Tunde, Chidi and the whole youth crew are travelling together again. "Every service is a fresh start," Brother Tunde says. "Let's carry the light a little further."`,
     outro: `Another month, another step closer to home, the heavenly kind. Chidi laughs: "Same time next month?" Of course.`, verse: 'lam322' };
 }
+
+// ---- Answer gates on the expressway: 3 short options, one per lane, plus a one-line note ----
+const GATE_NOTES = ['Genesis 6:14', 'Mark 3:14', 'Matthew 2:1', '1 Samuel 17:49', 'Genesis: the book of beginnings', 'Jonah 1:17', 'John 2:9', 'Luke 22:61', 'Psalm 23:1', 'Daniel 6:16',
+  'Matthew 14:17', 'Luke 10:33', 'Exodus 3:10', 'Galatians 5:22-23', 'The last of the 66 books', 'John 11:17', 'Luke 1:30-31', 'Genesis 37:28', 'Genesis 1:3', 'Judges 16:17',
+  'Matthew 14:29', 'Luke 19:4', 'John 11:35', '39 Old + 27 New Testament books', '1 Samuel 10:24', '1 Kings 3:9', 'Ruth 1:16', 'Acts 9:3', 'Luke 15:15', 'Esther 4:16',
+  'Exodus 34:28', 'Matthew 14:17', '2 Kings 2:11', 'Matthew 26:36', 'Genesis 41:25', '1 Corinthians 13:13', 'Matthew 6:9-13', 'Matthew 26:15', 'Acts 2:4', '1 Samuel 3:10',
+  'Genesis 7:12', 'Many psalms are titled "A Psalm of David"'];
+export const GATE_Q = QUIZ.map(([q, o, a], i) => {
+  const wrong = o.filter((_, j) => j !== a).slice(0, 2);
+  return [q, [o[a], ...wrong], 0, GATE_NOTES[i]];
+}).concat([
+  ['Who was Abraham\'s wife?', ['Sarah', 'Rebekah', 'Rachel'], 0, 'Genesis 17:15'],
+  ['What did Jesus ride into Jerusalem?', ['A young donkey', 'A horse', 'A camel'], 0, 'John 12:14: "a young ass"'],
+  ['Who was the first man God made?', ['Adam', 'Abel', 'Noah'], 0, 'Genesis 2:7'],
+  ['Which sea did God part for Moses?', ['The Red Sea', 'The Dead Sea', 'Sea of Galilee'], 0, 'Exodus 14:21'],
+  ['What bread from heaven fed Israel in the wilderness?', ['Manna', 'Barley loaves', 'Figs'], 0, 'Exodus 16:15'],
+  ['Who prepared the way for Jesus?', ['John the Baptist', 'James', 'Andrew'], 0, 'Mark 1:2-4'],
+  ['How many days did Jesus fast in the wilderness?', ['40', '7', '3'], 0, 'Matthew 4:2'],
+  ['Saul of Tarsus is better known as…', ['Paul', 'Peter', 'Luke'], 0, 'Acts 13:9'],
+]);
+
+// ---- Memory verses (KJV), split into the parts revealed by verse scrolls ----
+export const MEMORY = [
+  { ref: 'Matthew 5:16', parts: ['Let your light', 'so shine', 'before men,', 'that they may see', 'your good works,', 'and glorify your Father', 'which is in heaven.'] },
+  { ref: 'Psalm 119:105', parts: ['Thy word', 'is a lamp', 'unto my feet,', 'and a light', 'unto my path.'] },
+  { ref: 'Proverbs 3:5', parts: ['Trust in the LORD', 'with all thine heart;', 'and lean not', 'unto thine own', 'understanding.'] },
+  { ref: 'Philippians 4:13', parts: ['I can do', 'all things', 'through Christ', 'which strengtheneth me.'] },
+  { ref: '1 Timothy 4:12', parts: ['Let no man despise thy youth;', 'but be thou an example', 'of the believers,', 'in word, in conversation,', 'in charity, in spirit,', 'in faith, in purity.'] },
+  { ref: 'Psalm 119:11', parts: ['Thy word', 'have I hid', 'in mine heart,', 'that I might not', 'sin against thee.'] },
+  { ref: 'Joshua 1:9', parts: ['Have not I commanded thee?', 'Be strong and of a good courage;', 'be not afraid,', 'neither be thou dismayed:', 'for the LORD thy God is with thee', 'whithersoever thou goest.'] },
+  { ref: 'John 3:16', parts: ['For God so loved the world,', 'that he gave', 'his only begotten Son,', 'that whosoever believeth in him', 'should not perish,', 'but have everlasting life.'] },
+  { ref: 'Romans 12:21', parts: ['Be not overcome', 'of evil,', 'but overcome evil', 'with good.'] },
+  { ref: 'Ephesians 4:32', parts: ['And be ye kind one to another,', 'tenderhearted,', 'forgiving one another,', 'even as God', 'for Christ\'s sake', 'hath forgiven you.'] },
+  { ref: 'Psalm 23:1', parts: ['The LORD', 'is my shepherd;', 'I shall', 'not want.'] },
+  { ref: 'Micah 6:8', parts: ['He hath shewed thee, O man, what is good;', 'and what doth the LORD require of thee,', 'but to do justly,', 'and to love mercy,', 'and to walk humbly', 'with thy God?'] },
+];
+
+// ---- Camp Bible study with Sister Funke: levels unlock as chapters progress ----
+// each question: [question, [4 options], correctIndex, short explanation]
+export const STUDY = [
+  { name: 'The Gospels', icon: '✝️', qs: [
+    ['Who baptised Jesus in the river Jordan?', ['John the Baptist', 'Peter', 'Elijah', 'Andrew'], 0, 'Matthew 3:13-17. The Spirit came down like a dove and the Father spoke from heaven.'],
+    ['How many sheep did the shepherd leave to look for the one that was lost?', ['Ninety and nine', 'Fifty', 'Twelve', 'Ten'], 0, 'Luke 15:4. Every single person matters to God.'],
+    ['What did Jesus call "the first and great commandment"?', ['Love the Lord thy God with all thy heart', 'Remember the sabbath day', 'Honour thy father and mother', 'Thou shalt not steal'], 0, 'Matthew 22:37-38. The second is like it: love thy neighbour as thyself.'],
+    ['Who came to Jesus by night and heard "Ye must be born again"?', ['Nicodemus', 'Zacchaeus', 'Lazarus', 'Joseph of Arimathaea'], 0, 'John 3:1-7. Nicodemus was a ruler of the Jews.'],
+    ['Jesus healed ten lepers. How many came back to give thanks?', ['One', 'Three', 'Five', 'All ten'], 0, 'Luke 17:15-17. Gratitude is part of faith.'],
+    ['What was Matthew\'s work before he followed Jesus?', ['Tax collector (publican)', 'Fisherman', 'Carpenter', 'Tentmaker'], 0, 'Matthew 9:9. Jesus called him from the receipt of custom.'],
+    ['In the parable of the sower, what is the seed?', ['The word of God', 'Money', 'Good works', 'Rain'], 0, 'Luke 8:11. Good ground means an honest and good heart.'],
+    ['Which sisters welcomed Jesus into their home in Bethany?', ['Mary and Martha', 'Ruth and Orpah', 'Rachel and Leah', 'Lois and Eunice'], 0, 'Luke 10:38-42; John 11:1.'],
+    ['What did the poor widow put into the treasury?', ['Two mites', 'A talent of gold', 'Ten shekels', 'A lamb'], 0, 'Mark 12:42-44. She gave all she had, and Jesus said it was more than all the rest.'],
+    ['Which blind man cried, "Jesus, thou son of David, have mercy on me"?', ['Bartimaeus', 'Jairus', 'Malchus', 'Simon'], 0, 'Mark 10:46-52. He kept calling even when people told him to be quiet.'],
+    ['Who rolled back the stone from Jesus\' tomb?', ['The angel of the Lord', 'Peter', 'Mary Magdalene', 'The soldiers'], 0, 'Matthew 28:2. He is not here: for he is risen!'],
+    ['Where is "I am the way, the truth, and the life" written?', ['John 14:6', 'Mark 1:1', 'Luke 2:11', 'Matthew 1:21'], 0, 'John 14:6. No man cometh unto the Father, but by me.'],
+  ] },
+  { name: 'Acts of the Apostles', icon: '🔥', qs: [
+    ['What came upon the believers on the Day of Pentecost?', ['The Holy Ghost', 'Manna from heaven', 'A great flood', 'A pillar of salt'], 0, 'Acts 2:1-4. They spoke with other tongues as the Spirit gave them utterance.'],
+    ['Who preached at Pentecost when about three thousand souls were added?', ['Peter', 'Paul', 'Stephen', 'James'], 0, 'Acts 2:14, 41.'],
+    ['Who was stoned while praying, "Lord, lay not this sin to their charge"?', ['Stephen', 'James', 'Philip', 'Barnabas'], 0, 'Acts 7:59-60. He forgave like Jesus did.'],
+    ['Philip explained Isaiah to an official from which land?', ['Ethiopia', 'Egypt', 'Rome', 'Greece'], 0, 'Acts 8:27-38. The man was baptised on the spot.'],
+    ['Which couple lied about the price of their land?', ['Ananias and Sapphira', 'Aquila and Priscilla', 'Paul and Silas', 'Barnabas and Mark'], 0, 'Acts 5:1-10. God cares about honesty.'],
+    ['Where were the disciples first called Christians?', ['Antioch', 'Jerusalem', 'Rome', 'Corinth'], 0, 'Acts 11:26.'],
+    ['When an angel freed Peter from prison, who came to answer the door?', ['Rhoda', 'Lydia', 'Dorcas', 'Mary'], 0, 'Acts 12:13-16. She was so glad she forgot to open it!'],
+    ['In which city did Paul and Silas sing praises at midnight in prison?', ['Philippi', 'Ephesus', 'Athens', 'Lystra'], 0, 'Acts 16:12, 25. Then the prison doors opened.'],
+    ['Which seller of purple opened her heart to the gospel?', ['Lydia', 'Dorcas', 'Priscilla', 'Phoebe'], 0, 'Acts 16:14.'],
+    ['Who was raised to life at Joppa after Peter prayed?', ['Tabitha (Dorcas)', 'Eutychus', 'Lazarus', 'Jairus\' daughter'], 0, 'Acts 9:36-41. She was full of good works and almsdeeds.'],
+    ['Which young man fell from a window while Paul preached late?', ['Eutychus', 'Timothy', 'Mark', 'Silas'], 0, 'Acts 20:9-12. Paul embraced him and he was alive.'],
+    ['On which island was Paul shipwrecked?', ['Melita (Malta)', 'Cyprus', 'Patmos', 'Sicily'], 0, 'Acts 28:1. A viper bit him, yet he felt no harm.'],
+  ] },
+  { name: 'Old Testament Heroes', icon: '🛡️', qs: [
+    ['Who led Israel around Jericho until the walls fell down?', ['Joshua', 'Moses', 'Gideon', 'Caleb'], 0, 'Joshua 6:20. Faith and obedience brought the walls down.'],
+    ['God cut Gideon\'s army down to how many men?', ['Three hundred', 'Three thousand', 'Twelve', 'Ten thousand'], 0, 'Judges 7:7. The victory was clearly God\'s.'],
+    ['Which prophetess judged Israel under a palm tree?', ['Deborah', 'Hannah', 'Miriam', 'Esther'], 0, 'Judges 4:4-5.'],
+    ['Shadrach, Meshach and Abednego would not bow, so they were cast into…', ['A burning fiery furnace', 'A den of lions', 'A pit', 'The sea'], 0, 'Daniel 3:25. A fourth man walked with them in the fire.'],
+    ['Who prayed for a son and then gave Samuel to serve the LORD?', ['Hannah', 'Sarah', 'Rachel', 'Elizabeth'], 0, '1 Samuel 1:27-28.'],
+    ['To whom did Ruth say, "whither thou goest, I will go"?', ['Naomi', 'Boaz', 'Orpah', 'Esther'], 0, 'Ruth 1:16. Loyal love that God rewarded.'],
+    ['Nehemiah led the people to rebuild…', ['The wall of Jerusalem', 'The ark of Noah', 'The tower of Babel', 'Solomon\'s palace'], 0, 'Nehemiah 2:17; 6:15. Finished in fifty and two days.'],
+    ['On which mountain did Elijah face the prophets of Baal?', ['Mount Carmel', 'Mount Sinai', 'Mount Ararat', 'Mount of Olives'], 0, '1 Kings 18:19, 38. The fire of the LORD fell.'],
+    ['Which shepherd boy did Samuel anoint as king?', ['David', 'Saul', 'Jonathan', 'Absalom'], 0, '1 Samuel 16:7, 13. The LORD looketh on the heart.'],
+    ['Joseph told his brothers, "ye thought evil against me; but God meant it unto…"', ['good', 'glory', 'judgment', 'silence'], 0, 'Genesis 50:20. Forgiveness that saved many people.'],
+    ['Who did God call to leave his country for a land He would show him?', ['Abram (Abraham)', 'Isaac', 'Lot', 'Jacob'], 0, 'Genesis 12:1.'],
+    ['How many times a day did Daniel kneel to pray, even after the decree?', ['Three', 'Once', 'Seven', 'Twice'], 0, 'Daniel 6:10.'],
+  ] },
+  { name: 'The Epistles', icon: '✉️', qs: [
+    ['"For all have sinned, and come short of the glory of God" is in…', ['Romans', 'Galatians', 'Hebrews', 'James'], 0, 'Romans 3:23. And verse 24: justified freely by his grace.'],
+    ['Love, joy, peace, longsuffering, gentleness… are the fruit of the…', ['Spirit', 'flesh', 'law', 'vine'], 0, 'Galatians 5:22-23.'],
+    ['Ephesians 6 tells us to put on the whole…', ['armour of God', 'law of Moses', 'robe of glory', 'garment of praise'], 0, 'Ephesians 6:11. That ye may be able to stand.'],
+    ['Which letter says "faith without works is dead"?', ['James', 'Jude', 'Titus', 'Philemon'], 0, 'James 2:20, 26.'],
+    ['Paul told young Timothy: "Let no man despise thy…"', ['youth', 'gift', 'name', 'house'], 0, '1 Timothy 4:12. Be an example of the believers.'],
+    ['"Now faith is the substance of things hoped for, the evidence of things…"', ['not seen', 'to come', 'we know', 'promised'], 0, 'Hebrews 11:1.'],
+    ['1 Corinthians 13 is the great chapter about…', ['Charity (love)', 'Prophecy', 'Marriage', 'Tongues'], 0, '1 Corinthians 13:13. The greatest of these is charity.'],
+    ['"I can do all things through Christ which strengtheneth me" is in…', ['Philippians', 'Colossians', 'Romans', '2 Timothy'], 0, 'Philippians 4:13.'],
+    ['Paul asked Philemon to welcome back which runaway servant?', ['Onesimus', 'Tychicus', 'Epaphras', 'Demas'], 0, 'Philemon 1:10-16. Not now as a servant, but a brother beloved.'],
+    ['"Casting all your ___ upon him; for he careth for you."', ['care', 'crowns', 'money', 'nets'], 0, '1 Peter 5:7.'],
+    ['"Be not overcome of evil, but overcome evil with…"', ['good', 'prayer', 'power', 'silence'], 0, 'Romans 12:21.'],
+    ['"He that loveth not knoweth not God; for God is…"', ['love', 'light', 'holy', 'near'], 0, '1 John 4:8.'],
+  ] },
+  { name: 'Prophecy & the Last Things', icon: '👑', qs: [
+    ['Isaiah 9:6 calls the coming Child Wonderful, Counsellor, The mighty God, The everlasting Father, The Prince of…', ['Peace', 'Glory', 'Israel', 'Kings'], 0, 'Isaiah 9:6, fulfilled in Jesus.'],
+    ['Micah foretold that the ruler of Israel would come out of…', ['Bethlehem', 'Nazareth', 'Jerusalem', 'Hebron'], 0, 'Micah 5:2; Matthew 2:5-6.'],
+    ['"But he was wounded for our…"', ['transgressions', 'sorrows', 'enemies', 'nation'], 0, 'Isaiah 53:5. With his stripes we are healed.'],
+    ['Which prophet saw a valley of dry bones come to life?', ['Ezekiel', 'Jeremiah', 'Amos', 'Hosea'], 0, 'Ezekiel 37:1-10.'],
+    ['Joel said God would pour out His ___ upon all flesh.', ['spirit', 'wrath', 'gold', 'rain'], 0, 'Joel 2:28; fulfilled at Pentecost in Acts 2:16-17.'],
+    ['Who received the Revelation on the isle of Patmos?', ['John', 'Paul', 'Peter', 'Daniel'], 0, 'Revelation 1:9.'],
+    ['In Revelation 21, John saw the holy city, new…', ['Jerusalem', 'Eden', 'Babylon', 'Canaan'], 0, 'Revelation 21:2.'],
+    ['Revelation 21:4: "And God shall wipe away all ___ from their eyes."', ['tears', 'sins', 'dust', 'fear'], 0, 'No more death, neither sorrow, nor crying.'],
+    ['The angels said Jesus will come again "in like manner as ye have seen him go into…"', ['heaven', 'Galilee', 'the temple', 'Bethany'], 0, 'Acts 1:11.'],
+    ['Zechariah said the King would come lowly, riding upon…', ['an ass', 'a chariot', 'a white horse', 'a camel'], 0, 'Zechariah 9:9; fulfilled in Matthew 21:5.'],
+    ['"Surely I come quickly. Amen. Even so, come, Lord…"', ['Jesus', 'of hosts', 'God Almighty', 'of glory'], 0, 'Revelation 22:20, near the very end of the Bible.'],
+    ['Which prophet answered God, "Here am I; send me"?', ['Isaiah', 'Jonah', 'Jeremiah', 'Elijah'], 0, 'Isaiah 6:8.'],
+  ] },
+];

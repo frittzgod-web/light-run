@@ -13,6 +13,7 @@ const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;',
 const params = new URLSearchParams(location.search);
 const TIME_SCALE = clamp(+params.get('speed') || 1, 1, 8);
 const LITE = params.has('lite');
+const AUTO = params.has('autopilot'), AUTO_MIX = params.get('autopilot') === 'mix';
 
 /* ---------------- WebGL check ---------------- */
 function hasGL() { try { const c = document.createElement('canvas'); return !!(c.getContext('webgl2') || c.getContext('webgl')); } catch (e) { return false; } }
@@ -125,6 +126,19 @@ function drawPool(name, arr, n, key) {
 /* ---------------- Chapter state ---------------- */
 const S = { mode: 'title', paused: false, t: 0, score: 0, lantern: 50, floor: 15, orbs: 0, hits: 0, quizRight: 0, quizTotal: 0, helpedRun: 0, virtues: {}, log: [], plan: null };
 function addLantern(d) { S.lantern = clamp(S.lantern + d, S.floor, 100); }
+const VERSES_KEY = 'lr3d_verses', STUDY_KEY = 'lr3d_study';
+const myVerses = () => { try { return JSON.parse(localStorage.getItem(VERSES_KEY) || '[]'); } catch (e) { return []; } };
+function pickVerse(ch) {
+  const have = myVerses().map(v => v.ref), n = C.MEMORY.length;
+  for (let k = 0; k < n; k++) { const v = C.MEMORY[(ch - 1 + k) % n]; if (!have.includes(v.ref)) return v; }
+  return C.MEMORY[(ch - 1) % n];
+}
+function verseHUD(pop) {
+  if (!S.plan || !R) return;
+  const v = S.plan.verse, got = R.vGot, el = $('#hVerse');
+  el.innerHTML = `<span class="vi">📜</span> ${v.parts.map((p, i) => i < got ? `<b>${esc(p)}</b>` : '<i>▢</i>').join(' ')} <span class="ref">${esc(v.ref)}</span>`;
+  if (pop) { el.classList.remove('pop'); void el.offsetWidth; el.classList.add('pop'); }
+}
 
 /* ---------------- Player ---------------- */
 let player = null, lantern = null, lanternLight = null;
@@ -192,6 +206,45 @@ const orbs = Array.from({ length: ORB_N }, () => ({ on: false, x: 0, y: 1, z: 0 
 function hideOrbs() { const m = new THREE.Matrix4().makeScale(0, 0, 0); for (let i = 0; i < ORB_N; i++) orbMesh.setMatrixAt(i, m); orbMesh.instanceMatrix.needsUpdate = true; }
 hideOrbs();
 
+/* ---- answer gates (one glowing arch per lane) ---- */
+const GATE_COLS = ['#1e88e5', '#8e24aa', '#2e9e4f'];
+const answerGate = new THREE.Group(); answerGate.visible = false; RW.add(answerGate);
+function drawGateLabel(lab, text, col, state) {
+  const x = lab.cv.getContext('2d'), w = lab.cv.width, h = lab.cv.height;
+  x.clearRect(0, 0, w, h);
+  x.fillStyle = '#1a1206'; x.beginPath(); x.roundRect(4, 4, w - 8, h - 8, 26); x.fill();
+  x.fillStyle = state === 'ok' ? '#ffd23f' : state === 'dim' ? '#6d6d6d' : col; x.beginPath(); x.roundRect(12, 12, w - 24, h - 24, 20); x.fill();
+  x.fillStyle = state === 'ok' ? '#1a1206' : '#ffffff'; x.textAlign = 'center'; x.textBaseline = 'middle';
+  let fs = 46; x.font = `900 ${fs}px system-ui, sans-serif`;
+  while (x.measureText(text).width > w - 44 && fs > 22) { fs -= 2; x.font = `900 ${fs}px system-ui, sans-serif`; }
+  x.fillText(text, w / 2, h / 2 + 2);
+  lab.tex.needsUpdate = true;
+}
+const gateLanes = LANES.map((lx, i) => {
+  const g = new THREE.Group(); g.position.x = lx;
+  const frame = mergedMesh([P(G.box, '#ffd23f', -1.38, 1.7, 0, 0, 0, 0, 0.24, 3.4, 0.24), P(G.box, '#ffd23f', 1.38, 1.7, 0, 0, 0, 0, 0.24, 3.4, 0.24), P(G.box, '#ffd23f', 0, 3.4, 0, 0, 0, 0, 3.0, 0.26, 0.26)], 0.04, false);
+  const curtain = new THREE.Mesh(new THREE.PlaneGeometry(2.55, 3.25), new THREE.MeshBasicMaterial({ color: GATE_COLS[i], transparent: true, opacity: 0.3, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide, fog: false }));
+  curtain.position.y = 1.65;
+  const cv = document.createElement('canvas'); cv.width = 320; cv.height = 110;
+  const tex = new THREE.CanvasTexture(cv); tex.colorSpace = THREE.SRGBColorSpace; tex.anisotropy = 4;
+  const panel = new THREE.Mesh(new THREE.PlaneGeometry(3.0, 1.03), new THREE.MeshBasicMaterial({ map: tex, transparent: true, toneMapped: false, fog: false }));
+  panel.position.y = 4.15;
+  g.add(frame, curtain, panel); answerGate.add(g);
+  return { g, curtain, lab: { cv, tex }, panel };
+});
+const gateDist = i => stopDist(i) - 14;
+
+/* ---- verse scrolls ---- */
+const scrolls = [];
+for (let i = 0; i < 3; i++) {
+  const m = mergedMesh([
+    P(G.cyl, '#fff1cf', 0, 0, 0, 0, 0, Math.PI / 2, 0.55, 1.3, 0.55),
+    P(G.cyl, '#a0522d', -0.74, 0, 0, 0, 0, Math.PI / 2, 0.7, 0.18, 0.7), P(G.cyl, '#a0522d', 0.74, 0, 0, 0, 0, Math.PI / 2, 0.7, 0.18, 0.7),
+    P(G.box, '#d32f2f', 0, 0, 0, 0, 0, 0, 0.16, 0.6, 0.6)], 0.05, false);
+  m.visible = false; RW.add(m); scrolls.push({ obj: m, on: false, lane: 1 });
+}
+function hideScrolls() { scrolls.forEach(s => { s.on = false; s.obj.visible = false; }); }
+
 const OBS = {
   pothole: { make: pothole, rel: 1, jump: true, len: 1.6 },
   cone: { make: cones, rel: 1, jump: true, len: 0.9 },
@@ -229,20 +282,33 @@ function startRun() {
   S.mode = 'run'; S.paused = false;
   RW.visible = true; CW.visible = false; scene.add(player.root); player.root.visible = true; player.root.position.set(0, 0, 0); player.root.rotation.set(0, Math.PI, 0);
   clearObs(); orbs.forEach(o => o.on = false); fx.clear();
-  R = { dist: 0, speed: 13, lane: 1, px: 0, camX: 0, py: 0, jt: 0, inv: 0, shake: 0, nextRow: 30, stopIdx: 0, moralIdx: 0, dustT: 0, ev: S.plan.event };
-  hudMode('run');
-  toast('Swipe ⬅️ ➡️ to change lane · Swipe ⬆️ or tap to jump', 3200);
+  R = { dist: 0, t: 0, speed: 11, lane: 1, px: 0, camX: 0, py: 0, jt: 0, inv: 0, shake: 0, nextRow: 30, stopIdx: 0, moralIdx: 0, dustT: 0, ev: S.plan.event, gate: null, vGot: 0, nextScrollD: 70, autoT: 0, flash: 0, signFlash: null };
+  R.scrollGap = (RUN_LEN - 260) / (S.plan.verse.parts.length + 2.5);
+  hideScrolls(); answerGate.visible = false; $('#hQ').classList.add('hidden');
+  hudMode('run'); verseHUD();
+  toast('Swipe ⬅️ ➡️ to change lane · Swipe ⬆️ or tap to jump · Grab 📜 scrolls!', 3400);
 }
 const JT = 0.66;
 function runMove(d) { const n = clamp(R.lane + d, 0, 2); if (n !== R.lane) { R.lane = n; sfx.tap(); } }
 function runJump() { if (R.jt <= 0) { R.jt = JT; sfx.jump(); } }
-function rowGap() { const ch = save.chapter; return Math.max(12, 25 - R.stopIdx * 0.9 - (ch - 1) * 0.7) / Math.sqrt(R.ev.mod.traffic); }
+const MAX_SPEED = 28;
+function runSpeed() {
+  const ch = save.chapter, p = clamp(R.dist / RUN_LEN, 0, 1);
+  const base = 11.5 + Math.min(6, (ch - 1) * 0.75);
+  return Math.min(MAX_SPEED, base * Math.min(1, 0.6 + R.t * 0.16) + 9.5 * p);
+}
+function rowGap() { return Math.max(13, 31 - (R.speed - 11) * 1.05) / Math.sqrt(R.ev.mod.traffic); }
+const readDist = () => clamp(R.speed * 6, 95, 150);
+function inGateZone(arrive) {
+  for (const i of [R.stopIdx, R.stopIdx + 1]) { if (i >= C.STOPS.length - 1) continue; const gz = gateDist(i); if (arrive > gz - readDist() - 6 && arrive < stopDist(i) + 8) return true; }
+  return false;
+}
 function spawnRow() {
-  const st = R.stopIdx, ch = save.chapter, tr = R.ev.mod.traffic;
-  const pool = st < 2 && ch === 1 ? ['pothole', 'cone', 'danfo', 'pothole'] : st < 5 ? ['pothole', 'cone', 'danfo', 'okada', 'hawker', 'danfo'] : ['pothole', 'cone', 'danfo', 'okada', 'truck', 'hawker', 'danfo', 'okada'];
+  const sp = R.speed, ch = save.chapter, tr = R.ev.mod.traffic, easy = sp < 14.5 && ch === 1;
+  const pool = easy ? ['pothole', 'cone', 'danfo', 'pothole'] : sp < 19 ? ['pothole', 'cone', 'danfo', 'okada', 'hawker', 'danfo'] : ['pothole', 'cone', 'danfo', 'okada', 'truck', 'hawker', 'danfo', 'okada'];
   if (tr > 1.3) pool.push('danfo', 'truck');
   if (R.ev.mod.rain) pool.push('pothole', 'pothole');
-  const two = Math.random() < Math.min(0.75, (st < 2 && ch === 1 ? 0 : 0.3) + st * 0.04 + (ch - 1) * 0.04 + (tr - 1) * 0.3);
+  const two = Math.random() < Math.min(0.72, (easy ? 0 : 0.2) + Math.max(0, sp - 13) * 0.04 + (tr - 1) * 0.3);
   const lanes = shuffle([0, 1, 2]); const n = two ? 2 : 1;
   for (let i = 0; i < n; i++) spawnObs(pick(pool), lanes[i], SPAWN_Z - i * rand(0, 3));
   const free = lanes[n], cnt = 4 + Math.floor(Math.random() * 3);
@@ -258,10 +324,10 @@ function setMoralNPC(m) {
   const mk = textSprite('❗', 1.4); mk.position.y = 3.1; moralNPC.root.add(mk); moralNPC.mark = mk;
   moralNPC.root.position.set(6.6, 0, -999); RW.add(moralNPC.root);
 }
-const MORAL_AFTER = [1, 4, 7];
+const MORAL_AFTER = [2, 6];
 function updateRun(dt) {
   const ch = save.chapter, ev = R.ev;
-  R.speed = 13 + R.stopIdx * 0.85 + Math.min(6, (ch - 1) * 0.8);
+  R.t += dt; R.speed = runSpeed(); if (AUTO) autoSteer(dt);
   const move = R.speed * dt; R.dist += move;
   moveProps(move);
   for (const v of oncoming) { v.position.z += move + 18 * dt; if (v.position.z > 30) { v.position.z = -300 - rand(0, 60); v.position.x = Math.random() < 0.5 ? -10.6 : -15.2; } }
@@ -277,12 +343,13 @@ function updateRun(dt) {
   R.dustT -= dt; if (R.dustT <= 0 && R.py < 0.05) { R.dustT = 0.05; fx.emit(R.px + rand(-0.2, 0.2), 0.12, 0.35, rand(-0.6, 0.6), rand(0.4, 1.0), rand(0.5, 1.5), 0.55, 0.45, '#e6c9a0', 2.2); }
   if (ev.mod.rain) for (let i = 0; i < 3; i++) fx.emit(R.px + rand(-14, 14), rand(8, 14), rand(-30, 4), 0, -26, 0, 0.5, 0.18, '#cfe8ff', 0);
   const nextStop = stopDist(R.stopIdx), moral = S.plan.road[R.moralIdx];
-  const moralD = moral ? stopDist(MORAL_AFTER[R.moralIdx]) + GAP / 2 : Infinity;
+  const moralD = moral ? stopDist(MORAL_AFTER[R.moralIdx]) + 30 : Infinity;
   R.nextRow -= move;
   if (R.nextRow <= 0) {
     const arrive = R.dist - SPAWN_Z;
-    const quiet = (arrive > nextStop - 35 && arrive < nextStop + 8) || (arrive > moralD - 35 && arrive < moralD + 8) || arrive > RUN_LEN - 30;
+    const quiet = inGateZone(arrive) || (arrive > moralD - 35 && arrive < moralD + 8) || arrive > RUN_LEN - 30;
     if (!quiet) spawnRow();
+    else if (arrive < RUN_LEN - 30 && Math.random() < 0.5) { const l = Math.floor(Math.random() * 3); for (let k = 0; k < 4; k++) spawnOrb(LANES[l], 1.0, SPAWN_Z - k * 2.6); }
     R.nextRow = rowGap() + rand(0, 6);
   }
   const px = R.px, air = R.py > 0.6;
@@ -314,7 +381,41 @@ function updateRun(dt) {
     if (o.on && hi < halos.n - 1) { halos.pos.set([o.x, o.y, o.z], hi * 3); halos.col.set([1, 0.85, 0.3], hi * 3); halos.size[hi] = 2.2; halos.alpha[hi] = 0.8; hi++; }
   });
   orbMesh.instanceMatrix.needsUpdate = true;
+  // verse scrolls
+  const vp = S.plan.verse.parts;
+  if (R.vGot < vp.length && R.dist >= R.nextScrollD && !inGateZone(R.dist - SPAWN_Z) && R.dist - SPAWN_Z < RUN_LEN - 40) {
+    const sc = scrolls.find(s => !s.on);
+    const lanes = shuffle([0, 1, 2]).filter(l => !active.some(a => a.lane === l && Math.abs(a.obj.position.z - SPAWN_Z) < 12));
+    if (sc && lanes.length) { sc.on = true; sc.lane = lanes[0]; sc.obj.visible = true; sc.obj.position.set(LANES[sc.lane], 1.3, SPAWN_Z); R.nextScrollD = R.dist + R.scrollGap; }
+    else R.nextScrollD = R.dist + 8;
+  }
+  for (const sc of scrolls) {
+    if (!sc.on) continue;
+    sc.obj.position.z += move; sc.obj.rotation.y = Math.sin(S.t * 2) * 0.5; sc.obj.position.y = 1.3 + Math.sin(S.t * 4) * 0.15;
+    if (hi < halos.n - 1) { halos.pos.set([sc.obj.position.x, sc.obj.position.y, sc.obj.position.z], hi * 3); halos.col.set([1, 0.95, 0.6], hi * 3); halos.size[hi] = 3.4; halos.alpha[hi] = 0.9; hi++; }
+    if (Math.abs(sc.obj.position.z) < 1.2 && Math.abs(sc.obj.position.x - px) < 1.4 && R.py < 1.8) {
+      sc.on = false; sc.obj.visible = false; R.vGot++; S.score += 25; addLantern(2); sfx.orb(); setTimeout(() => sfx.orb(), 90);
+      for (let k = 0; k < 16; k++) fx.emit(sc.obj.position.x, 1.3, 0, rand(-2.5, 2.5), rand(0, 3.5), rand(-1, 1), 0.7, 0.45, '#fff1a8', 0.5);
+      verseHUD(true);
+      if (R.vGot >= vp.length) { sfx.good(); toast(`📜 Verse complete! ${S.plan.verse.ref} · bonus light at the camp gate`, 2600); }
+    }
+    if (sc.obj.position.z > 15) { sc.on = false; sc.obj.visible = false; }
+  }
   lanternHalo(hi);
+  // answer gates
+  const NG = C.STOPS.length - 1;
+  if (R.stopIdx < NG) {
+    const gi = R.stopIdx;
+    if (!R.gate || R.gate.idx !== gi) R.gate = prepGate(gi);
+    const g = R.gate, gd = gateDist(gi) - R.dist, rd = readDist();
+    answerGate.visible = gd < 175 && gd > -1.5; answerGate.position.z = -gd;
+    if (!g.called && gd < rd + 30) { g.called = true; toast(`🚌 Conductor: “${C.STOPS[gi]}! ${C.STOPS[gi]}! Enter with your change!”`, 1800); }
+    if (!g.shown && gd < rd) { g.shown = true; showGateQ(g); clearObs(a => a.obj.position.z < -40 && a.rel < 1); }
+    gateLanes.forEach((L, i) => { if (!g.done) L.curtain.material.opacity = 0.26 + 0.12 * Math.sin(S.t * 5 + i); else if (i === g.correctLane) L.curtain.material.opacity = 0.45 + 0.3 * Math.sin(S.t * 14); });
+    if (!g.done && gd <= 0) judgeGate(g);
+  } else answerGate.visible = false;
+  if (R.signFlash) { R.signFlash.t -= dt; const k = Math.max(0, R.signFlash.t) / 1.2, on = Math.floor(R.signFlash.t * 8) % 2 === 0; R.signFlash.mat.color.setRGB(1 + (on ? 0.9 : 0.2) * k, 1 + (on ? 0.9 : 0.2) * k, 1 + (on ? 0.1 : 0) * k); if (R.signFlash.t <= 0) { R.signFlash.mat.color.setRGB(1, 1, 1); R.signFlash = null; } }
+  if (R.flash > 0) R.flash -= dt;
   for (let k = 0; k < 2; k++) {
     const idx = R.stopIdx + k; const b = bridges[idx % 2];
     if (idx < C.STOPS.length - 1) { b.visible = true; b.position.z = -(stopDist(idx) - R.dist) - 2; if (b.userData.idx !== idx) { setBridgeSign(b, C.STOPS[idx], C.STOP_REGION[idx] + ' · BUS STOP'); b.userData.idx = idx; } }
@@ -337,8 +438,9 @@ function updateRun(dt) {
     return;
   }
   if (R.dist >= nextStop) {
-    const idx = R.stopIdx; R.stopIdx++; clearObs(a => a.obj.position.z > -50); sfx.stop();
-    if (idx >= C.STOPS.length - 1) arriveGate(); else stopQuiz(idx);
+    const idx = R.stopIdx; R.stopIdx++; sfx.stop();
+    if (idx >= C.STOPS.length - 1) { clearObs(a => a.obj.position.z > -50); arriveGate(); return; }
+    passStop(idx);
   }
   hud(prog);
 }
@@ -359,14 +461,15 @@ function sunFollow(x, z) {
 
 /* ---- HUD ---- */
 let hudT = 0;
-function hudMode(m) { $('#hud').classList.toggle('hidden', !m); $('#prompt').classList.add('hidden'); }
+function hudMode(m) { document.body.classList.toggle('inrun', m === 'run'); $('#hud').classList.toggle('hidden', !m); $('#prompt').classList.add('hidden'); $('#hVerse').classList.toggle('hidden', m !== 'run'); $('#hQ').classList.add('hidden'); }
 function hud(prog, info) {
   if ((hudT -= 1) > 0) return; hudT = 6;
   $('#hLant').style.width = S.lantern + '%'; $('#hFloor').style.left = S.floor + '%';
   $('#hScore').textContent = '✨ ' + S.score;
   if (S.mode === 'run') {
     const i = Math.min(R.stopIdx, C.STOPS.length - 1);
-    $('#hInfo').textContent = `Ch.${save.chapter} · Next stop: ${C.STOPS[i]} · ${Math.max(0, Math.round((stopDist(i) - R.dist) * 1.5))}m`;
+    $('#hInfo').textContent = R.flash > 0 ? `📍 ${C.STOPS[R.stopIdx - 1]} ✓ · ${Math.round(R.speed * 3.6)} km/h` : `Ch.${save.chapter} · Next stop: ${C.STOPS[i]} · ${Math.max(0, Math.round((stopDist(i) - R.dist) * 1.5))}m`;
+    $('#hInfo').classList.toggle('flash', R.flash > 0);
   } else if (info) $('#hInfo').textContent = info;
   $('#hProg').style.width = (prog * 100).toFixed(1) + '%';
 }
@@ -378,36 +481,70 @@ function settleRunner() {
   // lift the view so the runner sits above the dialog sheet while paused
   camera.position.set(R.camX, 3.0, 7.6); camera.lookAt(R.camX, -1.9, -9);
 }
-function stopQuiz(idx) {
-  settleRunner();
-  S.paused = true;
-  const q = S.plan.quiz[idx];
-  const order = shuffle(q[1].map((t, i) => ({ t, ok: i === q[2] })));
-  const m = $('#modalBody');
-  m.innerHTML = `<div class="banner"><div class="km">BUS STOP ${idx + 1} OF ${C.STOPS.length - 1} · ${C.STOP_REGION[idx]}</div><div class="name">${esc(C.STOPS[idx].toUpperCase())}</div></div>
-    <div class="small" style="text-align:center;margin-bottom:6px">Conductor dey shout: “${esc(C.STOPS[idx + 1])}! ${esc(C.STOPS[idx + 1])}! Enter with your change!” 🚌</div>
-    <div class="q">📖 ${esc(q[0])}</div>${order.map((o, i) => `<button class="btn opt" data-i="${i}">${esc(o.t)}</button>`).join('')}
-    <div class="fb" id="fb"></div><div id="qcont"></div>`;
-  show('modal'); m.scrollTop = 0;
-  const btns = m.querySelectorAll('[data-i]');
-  btns.forEach(b => b.addEventListener('click', () => {
-    const ok = order[+b.dataset.i].ok; S.quizTotal++;
-    btns.forEach((bb, i) => { bb.disabled = true; if (order[i].ok) bb.classList.add('right'); });
-    if (ok) { S.quizRight++; S.score += 50; addLantern(5); sfx.good(); $('#fb').innerHTML = '✅ <b>Correct!</b> +50 light, lantern +5'; }
-    else { b.classList.add('wrong'); sfx.soft(); $('#fb').innerHTML = '💛 Not quite, but now you know! Keep going.'; }
-    $('#qcont').innerHTML = `<button class="btn primary" id="qgo">Continue to ${esc(C.STOPS[idx + 1])} ▶</button>`;
-    $('#qgo').addEventListener('click', () => { sfx.tap(); hide('modal'); S.paused = false; R.inv = 1; });
-  }));
+function prepGate(idx) {
+  const q = S.plan.quiz[idx % S.plan.quiz.length];
+  const order = shuffle([0, 1, 2]);           // order[lane] = option index
+  const g = { idx, q, order, correctLane: order.indexOf(q[2]), called: false, shown: false, done: false };
+  gateLanes.forEach((L, i) => { drawGateLabel(L.lab, q[1][order[i]], GATE_COLS[i]); L.curtain.material.color.set(GATE_COLS[i]); L.curtain.material.opacity = 0.3; });
+  return g;
+}
+function showGateQ(g) {
+  const arrows = ['◀', '▲', '▶'];
+  $('#hQq').textContent = '📖 ' + g.q[0];
+  $('#hQo').innerHTML = g.order.map((o, i) => `<span class="go g${i}">${arrows[i]} ${esc(g.q[1][o])}</span>`).join('');
+  const hq = $('#hQ'); hq.classList.remove('hidden', 'ok', 'bad'); sfx.stop();
+}
+function judgeGate(g) {
+  g.done = true; S.quizTotal++;
+  const ok = R.lane === g.correctLane, right = g.q[1][g.q[2]], note = g.q[3] || '';
+  const hq = $('#hQ');
+  gateLanes.forEach((L, i) => { if (i === g.correctLane) { L.curtain.material.color.set('#ffd23f'); drawGateLabel(L.lab, right, GATE_COLS[i], 'ok'); } else drawGateLabel(L.lab, g.q[1][g.order[i]], GATE_COLS[i], 'dim'); });
+  if (ok) {
+    S.quizRight++; S.score += 50; addLantern(5); sfx.good();
+    for (let k = 0; k < 34; k++) fx.emit(R.px + rand(-1.2, 1.2), rand(0.4, 3.2), rand(-1, 0.5), rand(-4, 4), rand(1, 5), rand(-2, 2), 0.9, 0.6, pick(['#fff3a0', '#ffd23f', '#ffffff']), 0.5);
+    $('#hQq').textContent = `✅ Correct! +50 · ${right}`; $('#hQo').innerHTML = `<span class="note">${esc(note)}</span>`; hq.classList.add('ok');
+    toast(`✅ Correct! +50 · ${note}`, 1800);
+  } else {
+    sfx.soft(); addLantern(-2); R.inv = Math.max(R.inv, 0.7);
+    for (let k = 0; k < 10; k++) fx.emit(R.px + rand(-0.5, 0.5), rand(0.8, 2), 0, rand(-1, 1), rand(0, 1.2), 0, 0.6, 0.5, '#9fb3c8', 0.5);
+    $('#hQq').textContent = `💛 The answer was: ${right}`; $('#hQo').innerHTML = `<span class="note">${esc(note)}</span>`; hq.classList.add('bad');
+    toast(`💛 Not quite. It was “${right}” · ${note}`, 2400);
+  }
+  clearTimeout(g.tm); g.tm = setTimeout(() => { if (S.mode === 'run' && R && R.gate === g) hq.classList.add('hidden'); }, 2600);
+}
+function passStop(idx) {
+  const b = bridges[idx % 2];
+  if (b && b.userData.sign) R.signFlash = { mat: b.userData.sign.material, t: 1.2 };
+  R.flash = 1.6;
+  for (let k = 0; k < 18; k++) fx.emit(rand(-6, 6), rand(5.5, 8), -2, rand(-2, 2), rand(0, 2), rand(-1, 1), 0.8, 0.6, '#fff3a0', 0.5);
+}
+function autoSteer(dt) {   // test helper (?autopilot): steer to the right gate / scroll, avoid traffic
+  R.autoT -= dt;
+  let want = R.lane; const g = R.gate, gd = g ? gateDist(g.idx) - R.dist : 1e9;
+  if (g && g.shown && !g.done && gd < 70) want = AUTO_MIX && g.idx === 1 ? (g.correctLane + 1) % 3 : g.correctLane;
+  else { const sc = scrolls.find(s => s.on && s.obj.position.z < -1 && s.obj.position.z > -50); if (sc) want = sc.lane; }
+  const danger = l => active.some(a => !a.hit && a.lane === l && !a.jump && a.obj.position.z > -16 && a.obj.position.z < 3);
+  if (danger(want) && !(g && g.shown && !g.done && gd < 20)) { const alt = [0, 1, 2].filter(l => !danger(l)).sort((x, y) => Math.abs(x - R.lane) - Math.abs(y - R.lane))[0]; if (alt !== undefined) want = alt; }
+  if (want !== R.lane && R.autoT <= 0) { runMove(Math.sign(want - R.lane)); R.autoT = 0.16; }
+  if (active.some(a => !a.hit && a.lane === R.lane && a.jump && a.obj.position.z > -6 && a.obj.position.z < -2.5)) runJump();
 }
 function arriveGate() {
   settleRunner();
   S.paused = true;
-  const m = $('#modalBody'), q = S.plan.quest;
+  const m = $('#modalBody'), q = S.plan.quest, v = S.plan.verse, full = v.parts.join(' ');
+  S.vGot = R.vGot; S.verseDone = R.vGot >= v.parts.length;
+  let verseCard;
+  if (S.verseDone) {
+    S.score += 300; addLantern(10);
+    const list = myVerses().filter(x => x.ref !== v.ref); list.unshift({ ref: v.ref, text: full, ch: save.chapter, at: new Date().toISOString().slice(0, 10) }); localStorage.setItem(VERSES_KEY, JSON.stringify(list));
+    verseCard = `<div class="vmem"><div class="vt">📜 VERSE MEMORISED · +300 · 🏮 +10</div><div class="vx">“${esc(full)}”</div><b>${esc(v.ref)} (KJV)</b><div class="small">Saved to <b>My Verses</b> on the title screen. Say it out loud once more!</div></div>`;
+  } else verseCard = `<div class="vmem partial"><div class="vt">📜 ${R.vGot}/${v.parts.length} parts of ${esc(v.ref)}</div><div class="vx">${v.parts.map((p, i) => i < R.vGot ? esc(p) : '▢').join(' ')}</div><div class="small">Grab every scroll to memorise it. It'll come back next chapter.</div></div>`;
   m.innerHTML = `<div class="banner purple"><div class="km">KM 46 · LAGOS–IBADAN EXPRESSWAY</div><div class="name">REDEMPTION CITY</div></div>
     <h2 style="text-align:center">🎉 You made it, ${esc(save.name)}!</h2>
-    <div class="chips"><span class="chip">✨ ${S.orbs} orbs</span><span class="chip">📖 ${S.quizRight}/${S.quizTotal} questions</span><span class="chip">🤲 ${S.helpedRun} helped</span><span class="chip dim">💥 ${S.hits} bumps</span></div>
+    <div class="chips"><span class="chip">✨ ${S.orbs} orbs</span><span class="chip">📖 ${S.quizRight}/${S.quizTotal} gates</span><span class="chip">🤲 ${S.helpedRun} helped</span><span class="chip dim">💥 ${S.hits} bumps</span></div>
+    ${verseCard}
     <p>Lantern: <b>${Math.round(S.lantern)}%</b> · Score: <b>${S.score}</b></p><div class="meter"><i style="width:${S.lantern}%"></i></div>
-    <p>Now explore the camp. Talk to pilgrims with a ❗, find the ${q.n} ${q.item} <b>${esc(q.title.toLowerCase())}</b>, and head for the <b>Main Auditorium</b>. Follow the golden beacon ✨.</p>
+    <p>Now explore the camp. Talk to pilgrims with a ❗, find the ${q.n} ${q.item} <b>${esc(q.title.toLowerCase())}</b>, and head for the <b>Main Auditorium</b>. Follow the golden beacon ✨.</p><p class="small">📖 Optional: <b>Sister Funke</b> runs a Bible study at the Prayer Ground. Answer at your own pace for extra light.</p>
     <button class="btn primary" id="gogo">Enter the camp ⛺</button>`;
   show('modal'); m.scrollTop = 0;
   $('#gogo').addEventListener('click', () => { sfx.good(); hide('modal'); startCamp(); });
@@ -556,6 +693,10 @@ function startCamp() {
   for (const g of [[-26, 30], [36, 20], [-48, -28], [12, 84], [52, 18], [-14, -20]]) { const h = makeHuman(randomLook({ gender: pick(['m', 'f']) }), false); h.root.position.set(g[0], 0, g[1]); h.root.rotation.y = rand(0, 6); h.idle = true; CW.add(h.root); K.all.push(h); }
   const ITEMS = shuffle([[-14, 60], [20, 50], [-50, 58], [64, 52], [-70, -10], [70, -16], [-30, -84], [26, -60], [-60, -58], [40, 70], [-22, 12], [12, -40]]).slice(0, S.plan.quest.n);
   for (const [x, z] of ITEMS) { const s = textSprite(S.plan.quest.item, 1.3); s.material.depthTest = true; s.position.set(x, 1.3, z); CW.add(s); K.items.push(s); K.all.push({ root: s }); }
+  const fSpot = [[-44, -38], [-34, -36], [-56, -40], [-46, -56], [-30, -52], [-60, -52]].find(p => !blocked(p[0], p[1], 0.8) && !usedSpots.has(p + '')) || [-24, -36];
+  const funke = makeHuman({ ...randomLook({ gender: 'f', gele: true }), top: '#ffffff', topTex: null, headColor: '#1565c0' }, false);
+  funke.root.position.set(fSpot[0], 0, fSpot[1]); funke.mark = textSprite('📖', 1.5); funke.mark.position.y = 3.2; funke.root.add(funke.mark);
+  CW.add(funke.root); K.all.push(funke); K.funke = funke; K.studied = false;
   player.root.position.set(0, 0, 104); player.root.rotation.set(0, Math.PI, 0); scene.add(player.root); player.root.visible = true;
   camera.position.set(0, 8.6, 111.6);
   hudMode('camp');
@@ -595,6 +736,7 @@ function updateCamp(dt) {
     h.mark.position.y = 3.2 + Math.sin(S.t * 5 + h.phase) * 0.15;
   }
   poseHuman(K.usher, 'idle', dt);
+  { const f = K.funke, dx = K.x - f.root.position.x, dz = K.z - f.root.position.z, d = Math.hypot(dx, dz); if (d < 9) f.root.rotation.y = Math.atan2(dx, dz); poseHuman(f, !K.studied && d < 14 ? 'wave' : 'idle', dt); f.mark.position.y = 3.2 + Math.sin(S.t * 4) * 0.15; }
   for (const h of K.walkers) {
     const dx = h.wp[0] - h.root.position.x, dz = h.wp[1] - h.root.position.z, d = Math.hypot(dx, dz);
     if (d < 1) h.wp = [clamp(h.wp[0] + rand(-25, 25), -90, 90), clamp(h.wp[1] + rand(-25, 25), -60, 95)];
@@ -613,8 +755,9 @@ function updateCamp(dt) {
   const mc = metCount();
   let near = null, nd = 3.4;
   for (const h of K.enc) { if (K.met[h.enc.id]) continue; const d = Math.hypot(h.root.position.x - K.x, h.root.position.z - K.z); if (d < nd) { nd = d; near = h; } }
-  const atDoor = Math.hypot(DOOR[0] - K.x, DOOR[1] - K.z) < 6.5;
+  const atDoor = Math.hypot(DOOR[0] - K.x, DOOR[1] - K.z) < 6.5, atFunke = Math.hypot(K.funke.root.position.x - K.x, K.funke.root.position.z - K.z) < 3.4;
   if (near) setPrompt(`💬 ${near.enc.av} ${near.enc.name}`, false, () => talk(near));
+  else if (atFunke) { if (!K.studied) setPrompt('📖 Bible study with Sister Funke', false, openStudy); else setPrompt('📖 Sister Funke: “Well done! See you next chapter.”', true, null); }
   else if (atDoor) { if (mc >= DOOR_NEED) setPrompt('⛪ Enter the Holy Ghost Service', false, enterService); else setPrompt(`👮🏾 Usher: help ${DOOR_NEED - mc} more pilgrim${DOOR_NEED - mc > 1 ? 's' : ''} first (${mc}/${DOOR_NEED})`, true, null); }
   else { $('#prompt').classList.add('hidden'); promptFn = null; }
   let target = null, td = Infinity;
@@ -636,6 +779,58 @@ $('#prompt').addEventListener('click', e => { e.stopPropagation(); if (promptFn 
 function talk(h) {
   K.joy = null; K.tx = null; $('#joy').classList.add('hidden');
   openDialog(h.enc, false, () => { K.met[h.enc.id] = true; h.root.remove(h.mark); h.mark = textSprite('💛', 1.1); h.mark.position.y = 3.2; h.root.add(h.mark); }, campZone(h.root.position.x, h.root.position.z));
+}
+function studyData() { try { return Object.assign({ done: {}, right: 0, total: 0, sessions: 0 }, JSON.parse(localStorage.getItem(STUDY_KEY) || '{}')); } catch (e) { return { done: {}, right: 0, total: 0, sessions: 0 }; } }
+function openStudy() {
+  K.joy = null; K.tx = null; S.paused = true; $('#prompt').classList.add('hidden'); $('#toast').classList.remove('show');
+  const sd = studyData(), unlocked = Math.min(C.STUDY.length, save.chapter), m = $('#modalBody');
+  const lvls = C.STUDY.map((L, i) => {
+    const n = L.qs.filter((_, j) => sd.done[i + ':' + j]).length, open = i < unlocked;
+    return `<button class="btn opt lvl ${open ? '' : 'locked'}" data-l="${i}" ${open ? '' : 'disabled'}>${L.icon} <b>Level ${i + 1}: ${esc(L.name)}</b><span class="small">${open ? `${n}/${L.qs.length} mastered` : `🔒 Unlocks in Chapter ${i + 1}`}</span></button>`;
+  }).join('');
+  m.innerHTML = `<div class="banner"><div class="km">PRAYER GROUND · BIBLE STUDY</div><div class="name">SISTER FUNKE</div></div>
+    <div class="story">👩🏾‍🏫 “Welcome, ${esc(save.name)}! Sit down, no rush. <i>Thy word is a lamp unto my feet</i> (Psalm 119:105). Pick a level and we'll go through 4 questions together.”</div>${lvls}
+    <button class="btn ghost" id="stBack">Maybe later</button>`;
+  show('modal'); m.scrollTop = 0;
+  $('#stBack').onclick = () => { sfx.tap(); hide('modal'); S.paused = false; };
+  m.querySelectorAll('[data-l]').forEach(b => b.addEventListener('click', () => { sfx.tap(); runStudy(+b.dataset.l); }));
+}
+function runStudy(L) {
+  const sd = studyData(), lvl = C.STUDY[L], m = $('#modalBody');
+  const idx = lvl.qs.map((_, j) => j), fresh = shuffle(idx.filter(j => !sd.done[L + ':' + j])), old = shuffle(idx.filter(j => sd.done[L + ':' + j]));
+  const picks = [...fresh, ...old].slice(0, 4);
+  let k = 0, right = 0;
+  const ask = () => {
+    const q = lvl.qs[picks[k]], order = shuffle(q[1].map((t, i) => ({ t, ok: i === q[2] })));
+    m.innerHTML = `<div class="banner"><div class="km">${lvl.icon} LEVEL ${L + 1} · ${esc(lvl.name.toUpperCase())}</div><div class="name">QUESTION ${k + 1} OF ${picks.length}</div></div>
+      <div class="q">${esc(q[0])}</div>${order.map((o, i) => `<button class="btn opt" data-i="${i}">${esc(o.t)}</button>`).join('')}<div class="fb" id="sfb"></div><div id="snext"></div>`;
+    m.scrollTop = 0;
+    const btns = m.querySelectorAll('[data-i]');
+    btns.forEach(b => b.addEventListener('click', () => {
+      const ok = order[+b.dataset.i].ok; S.studyTotal++; sd.total++;
+      btns.forEach((bb, i) => { bb.disabled = true; if (order[i].ok) bb.classList.add('right'); });
+      if (ok) { right++; S.studyRight++; sd.right++; sd.done[L + ':' + picks[k]] = 1; S.score += 40; addLantern(2); sfx.good(); }
+      else { b.classList.add('wrong'); sfx.soft(); }
+      $('#sfb').innerHTML = `${ok ? '✅ <b>Correct! +40</b>' : '💛 <b>Good try.</b> The answer is highlighted.'}<div class="verse" style="margin-top:8px">${esc(q[3])}</div>`;
+      localStorage.setItem(STUDY_KEY, JSON.stringify(sd));
+      $('#snext').innerHTML = `<button class="btn primary" id="sgo">${k + 1 < picks.length ? 'Next question ▶' : 'Finish study'}</button>`;
+      $('#sgo').onclick = () => { sfx.tap(); k++; if (k < picks.length) ask(); else done(); };
+    }));
+  };
+  const done = () => {
+    sd.sessions++; localStorage.setItem(STUDY_KEY, JSON.stringify(sd));
+    S.virtues.Faithfulness = (S.virtues.Faithfulness || 0) + 1; addLantern(6); S.score += 60; K.studied = true;
+    K.funke.root.remove(K.funke.mark); K.funke.mark = textSprite('💛', 1.1); K.funke.mark.position.y = 3.2; K.funke.root.add(K.funke.mark);
+    const n = lvl.qs.filter((_, j) => sd.done[L + ':' + j]).length;
+    m.innerHTML = `<div class="banner"><div class="km">BIBLE STUDY COMPLETE</div><div class="name">${right}/${picks.length} CORRECT</div></div>
+      <div class="story">👩🏾‍🏫 “${right === picks.length ? 'Excellent! You really know your Bible.' : right >= 2 ? 'Well done! Keep reading and it will stick.' : 'Every great Bible student started somewhere. Keep at it!'} Come back next chapter${save.chapter < C.STUDY.length ? ' and a new level will be open' : ''}.”</div>
+      <div class="chips"><span class="chip">${C.VIRTUES.Faithfulness} +1 Faithfulness</span><span class="chip">✨ +${right * 40 + 60}</span><span class="chip">🏮 +${right * 2 + 6}</span><span class="chip">${lvl.icon} ${n}/${lvl.qs.length} mastered</span></div>
+      ${verseHTML(['Study to shew thyself approved unto God, a workman that needeth not to be ashamed, rightly dividing the word of truth.', '2 Timothy 2:15'])}
+      <button class="btn primary" id="sDone">Back to the camp</button>`;
+    m.scrollTop = 0;
+    $('#sDone').onclick = () => { sfx.tap(); hide('modal'); S.paused = false; };
+  };
+  ask();
 }
 function enterService() { K.joy = null; K.tx = null; openDialog(S.plan.door, false, () => setTimeout(showEnding, 200), 'Main Auditorium'); }
 
@@ -695,6 +890,7 @@ function enterTitle() {
   $('#btnContinue').classList.toggle('hidden', !save);
   if (save) $('#btnContinue').textContent = `▶ Continue · Chapter ${save.chapter} (${save.name})`;
   const hs = JSON.parse(localStorage.getItem('lr3d_high') || 'null');
+  const mv = myVerses().length; $('#btnVerses').textContent = `📜 My Verses (${mv})`;
   $('#hiscore').textContent = hs ? `🏆 Best on this phone: ${hs.score} by ${hs.name} (Chapter ${hs.chapter})` : '';
 }
 function updateTitle(dt) {
@@ -742,6 +938,15 @@ $('#btnNew').addEventListener('click', () => {
 });
 $('#btnContinue').addEventListener('click', () => { ensureAudio(); sfx.good(); hide('title'); buildPlayer(); chapterIntro(); });
 $('#btnHow').addEventListener('click', () => { ensureAudio(); sfx.tap(); show('howto'); });
+$('#btnVerses').addEventListener('click', () => {
+  ensureAudio(); sfx.tap();
+  const list = myVerses(), sd = studyData();
+  const lv = C.STUDY.map((L, i) => { const n = L.qs.filter((_, j) => sd.done[i + ':' + j]).length; return `<span class="chip ${save && save.chapter > i ? '' : 'dim'}">${L.icon} ${esc(L.name)} ${save && save.chapter > i ? n + '/' + L.qs.length : '🔒'}</span>`; }).join('');
+  $('#modalBody').innerHTML = `<h2>📜 My Verses</h2>${list.length ? list.map(v => `<div class="verse">“${esc(v.text)}”<b>${esc(v.ref)} (KJV) · Chapter ${v.ch}</b></div>`).join('') : '<p>No verses yet. Collect every 📜 scroll on the expressway to memorise a verse.</p>'}
+    <h3>🎓 Bible study progress</h3><div class="chips">${lv}</div><p class="small">${sd.right}/${sd.total} study answers correct over ${sd.sessions} session${sd.sessions === 1 ? '' : 's'}.</p>
+    <button class="btn primary" id="vClose">Close</button>`;
+  show('modal'); $('#modalBody').scrollTop = 0; $('#vClose').onclick = () => hide('modal');
+});
 $('#btnSelBack').addEventListener('click', () => { hide('select'); enterTitle(); });
 $('#btnGo').addEventListener('click', () => {
   ensureAudio(); sfx.good();
@@ -755,12 +960,13 @@ function planChapter() {
   const ch = save.chapter;
   const event = C.EVENTS[(ch - 1) % C.EVENTS.length];
   const enc = drawPool('enc', C.ENCOUNTERS, 8, a => a.id);
-  const quiz = drawPool('quiz', C.QUIZ, 9, (a, i) => i);
-  const road = drawPool('road', C.ROADSIDE, 3, a => a.id);
+  const quiz = drawPool('gate', C.GATE_Q, C.STOPS.length - 1, a => a[0]);
+  const road = drawPool('road', C.ROADSIDE, ch % 3 === 0 ? 1 : 2, a => a.id);
+  const verse = pickVerse(ch);
   const door = drawPool('door', C.DOOR, 1, a => a.id)[0];
   const quest = drawPool('quest', C.SIDE_QUESTS, 1, a => a.title)[0];
   persist();
-  return { event, enc, quiz, road, door, quest, story: C.storyBeat(ch) };
+  return { event, enc, quiz, road, door, quest, verse, story: C.storyBeat(ch) };
 }
 function chapterIntro() {
   S.mode = 'intro'; S.paused = true; hudMode(null);
@@ -769,12 +975,13 @@ function chapterIntro() {
   setSky('day', 'day', 0);
   S.plan = planChapter();
   const ch = save.chapter, lvl = lanternLevel();
-  Object.assign(S, { score: 0, orbs: 0, hits: 0, quizRight: 0, quizTotal: 0, helpedRun: 0, virtues: {}, log: [] });
+  Object.assign(S, { score: 0, orbs: 0, hits: 0, quizRight: 0, quizTotal: 0, helpedRun: 0, virtues: {}, log: [], studyRight: 0, studyTotal: 0, verseDone: false, vGot: 0 });
   S.floor = Math.min(45, 12 + lvl * 3); S.lantern = clamp(Math.min(70, save.lantern ?? 50), S.floor, 100);
   const p = S.plan;
   $('#modalBody').innerHTML = `<div class="banner purple"><div class="km">CHAPTER ${ch} · ${esc(p.event.when.toUpperCase())}</div><div class="name">${esc(p.event.title)}</div></div>
     <div class="story">🧑🏾‍🏫 ${esc(p.story.intro)}</div>
-    <div class="chips"><span class="chip">🏮 Lantern Lv ${lvl}</span><span class="chip">🛣️ ${esc(p.event.note)}</span><span class="chip">${p.quest.item} Side quest: ${esc(p.quest.title)}</span></div>
+    <div class="chips"><span class="chip">🏮 Lantern Lv ${lvl}</span><span class="chip">🛣️ ${esc(p.event.note)}</span><span class="chip">${p.quest.item} Side quest: ${esc(p.quest.title)}</span><span class="chip">📜 Memory verse: ${esc(p.verse.ref)}</span></div>
+    <p class="small">Run through the glowing <b>answer gate</b> at each bus stop, and grab 📜 scrolls to build this chapter's memory verse.</p>
     ${ch > 1 ? `<p class="small">Virtues so far: ${Object.keys(save.totals).filter(k => save.totals[k]).map(k => C.VIRTUES[k] + '×' + save.totals[k]).join(' ') || '—'}</p>` : ''}
     <button class="btn primary" id="chGo">Start the journey from Ojota ▶</button><button class="btn ghost" id="chMenu">Main menu</button>`;
   show('modal'); $('#modalBody').scrollTop = 0;
@@ -799,7 +1006,7 @@ function showEnding() {
   const homeKeys = shown.length >= 4 ? shown : [...shown, ...shuffle(all.filter(k => !shown.includes(k)))].slice(0, 5);
   const st = S.plan.story; const sv = st.verse && C.V[st.verse];
   const url = /^https?:/.test(location.href) && !/localhost|127\.0\.0\.1/.test(location.host) ? '\n' + location.href.split('?')[0] : '';
-  const share = `🏮 Redemption City: Light Run 3D\n${save.name} finished Chapter ${doneCh}: ${S.plan.event.title}!\n✨ Light score: ${total}\n🏮 Lantern: ${lant}% (Lv ${lanternLevel()})\n💛 Virtues this chapter: ${shown.length} ${shown.map(k => C.VIRTUES[k]).join('')}\n📖 Bible Qs: ${S.quizRight}/${S.quizTotal}\nCan you shine brighter? (Matthew 5:16)${url}`;
+  const share = `🏮 Redemption City: Light Run 3D\n${save.name} finished Chapter ${doneCh}: ${S.plan.event.title}!\n✨ Light score: ${total}\n🏮 Lantern: ${lant}% (Lv ${lanternLevel()})\n💛 Virtues this chapter: ${shown.length} ${shown.map(k => C.VIRTUES[k]).join('')}\n📖 Answer gates: ${S.quizRight}/${S.quizTotal}\n📜 ${S.verseDone ? 'Memorised ' + S.plan.verse.ref : 'Verse: ' + S.vGot + '/' + S.plan.verse.parts.length}${S.studyTotal ? '\n🎓 Bible study: ' + S.studyRight + '/' + S.studyTotal : ''}\nCan you shine brighter? (Matthew 5:16)${url}`;
   $('#endBody').innerHTML = `
     <div style="text-align:center;font-size:54px;filter:drop-shadow(0 0 ${8 + lant / 4}px #ffb300)">🏮</div>
     <h2 style="text-align:center;margin:0">Welcome to the Holy Ghost Service, ${esc(save.name)}!</h2>
@@ -807,7 +1014,7 @@ function showEnding() {
     <p class="small" style="text-align:center">${tier[1]}</p>
     <div class="big-score"><div class="n">${total}</div><div class="small" style="text-align:center">light score ${isHigh ? '· 🏆 new best on this phone!' : `· best: ${hs.score} (${esc(hs.name)})`}</div></div>
     <div class="small">Lantern brightness: <b>${lant}%</b> · Lantern Lv <b>${lanternLevel()}</b></div><div class="meter"><i style="width:${lant}%"></i></div>
-    <div class="chips"><span class="chip">✨ ${S.orbs} orbs</span><span class="chip">📖 ${S.quizRight}/${S.quizTotal} Bible Qs</span><span class="chip">🤲 ${S.log.filter(l => l.good).length} good choices</span><span class="chip">${S.plan.quest.item} ${K ? K.quest : 0}/${S.plan.quest.n}</span><span class="chip dim">+${bonus} end bonus</span></div>
+    <div class="chips"><span class="chip">✨ ${S.orbs} orbs</span><span class="chip">📖 ${S.quizRight}/${S.quizTotal} gates</span><span class="chip">📜 ${S.verseDone ? 'Verse memorised' : S.vGot + '/' + S.plan.verse.parts.length + ' verse'}</span>${S.studyTotal ? `<span class="chip">🎓 Study ${S.studyRight}/${S.studyTotal}</span>` : ''}<span class="chip">🤲 ${S.log.filter(l => l.good).length} good choices</span><span class="chip">${S.plan.quest.item} ${K ? K.quest : 0}/${S.plan.quest.n}</span><span class="chip dim">+${bonus} end bonus</span></div>
     <div class="story">🧑🏾‍🏫 ${esc(st.outro)}</div>${sv ? verseHTML(sv) : ''}
     <h3>Virtues you showed (${shown.length}/12)</h3><div class="vgrid">${vList}</div>
     <h3>Why it matters</h3>
@@ -868,5 +1075,8 @@ window.LR = {
   skipRun() { if (R) { R.dist = RUN_LEN - 3; R.stopIdx = C.STOPS.length - 1; R.moralIdx = 3; setMoralNPC(null); } },
   near(i) { if (!K) return; const h = K.enc[i]; K.x = h.root.position.x; K.z = h.root.position.z + 2.2; K.tx = null; },
   door() { if (K) { K.x = DOOR[0]; K.z = DOOR[1] + 3; } },
+  study() { if (K) { K.x = K.funke.root.position.x; K.z = K.funke.root.position.z + 2.2; K.tx = null; } },
+  get gate() { return R && R.gate ? { idx: R.gate.idx, shown: R.gate.shown, done: R.gate.done, gd: gateDist(R.gate.idx) - R.dist, lane: R.lane, correct: R.gate.correctLane } : null; },
+  get run() { return R ? { speed: R.speed, vGot: R.vGot, parts: S.plan.verse.parts.length, quizRight: S.quizRight, quizTotal: S.quizTotal, moral: R.moralIdx } : null; },
   get encCount() { return K ? K.enc.length : 0; },
 };
