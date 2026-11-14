@@ -229,7 +229,7 @@ function startRun() {
   S.mode = 'run'; S.paused = false;
   RW.visible = true; CW.visible = false; scene.add(player.root); player.root.visible = true; player.root.position.set(0, 0, 0); player.root.rotation.set(0, Math.PI, 0);
   clearObs(); orbs.forEach(o => o.on = false); fx.clear();
-  R = { dist: 0, speed: 13, lane: 1, px: 0, py: 0, jt: 0, inv: 0, shake: 0, nextRow: 30, stopIdx: 0, moralIdx: 0, dustT: 0, ev: S.plan.event };
+  R = { dist: 0, speed: 13, lane: 1, px: 0, camX: 0, py: 0, jt: 0, inv: 0, shake: 0, nextRow: 30, stopIdx: 0, moralIdx: 0, dustT: 0, ev: S.plan.event };
   hudMode('run');
   toast('Swipe ⬅️ ➡️ to change lane · Swipe ⬆️ or tap to jump', 3200);
 }
@@ -326,12 +326,13 @@ function updateRun(dt) {
   setSky('day', 'dusk', clamp((prog - 0.35) / 0.65, 0, 1), ev.mod.fog);
   lanternLight.intensity = prog * 2.2 * S.lantern / 100;
   const sh = R.shake > 0 ? R.shake * 0.6 : 0;
-  camera.position.lerp(_pv.set(R.px * 0.55 + rand(-sh, sh), 3.0 + R.py * 0.35 + rand(-sh, sh), 6.6), Math.min(1, dt * 6));
-  camera.lookAt(R.px * 0.35, 1.3 + R.py * 0.25, -12);
+  R.camX += (R.px - R.camX) * Math.min(1, dt * 7);
+  camera.position.set(R.camX + rand(-sh, sh), 3.3 + R.py * 0.3 + rand(-sh, sh), 7.6);
+  camera.lookAt(R.camX, 1.25 + R.py * 0.2, -9);
   sunFollow(R.px, 0);
   fx.update(dt, R.speed, 0);
   if (moral && R.dist >= moralD - 1) {
-    R.moralIdx++; clearObs(a => a.obj.position.z > -45);
+    R.moralIdx++; clearObs(a => a.obj.position.z > -45); settleRunner();
     openDialog(moral, true, () => { R.inv = 1.2; setMoralNPC(S.plan.road[R.moralIdx]); });
     return;
   }
@@ -371,7 +372,14 @@ function hud(prog, info) {
 }
 
 /* ---- quiz, gate ---- */
+function settleRunner() {
+  R.jt = 0; R.py = 0; R.px = LANES[R.lane]; R.camX = R.px; R.inv = 0;
+  player.root.position.set(R.px, 0, 0); player.root.rotation.z = 0; player.root.visible = true; poseHuman(player, 'idle', 0.016);
+  // lift the view so the runner sits above the dialog sheet while paused
+  camera.position.set(R.camX, 3.0, 7.6); camera.lookAt(R.camX, -1.9, -9);
+}
 function stopQuiz(idx) {
+  settleRunner();
   S.paused = true;
   const q = S.plan.quiz[idx];
   const order = shuffle(q[1].map((t, i) => ({ t, ok: i === q[2] })));
@@ -392,6 +400,7 @@ function stopQuiz(idx) {
   }));
 }
 function arriveGate() {
+  settleRunner();
   S.paused = true;
   const m = $('#modalBody'), q = S.plan.quest;
   m.innerHTML = `<div class="banner purple"><div class="km">KM 46 · LAGOS–IBADAN EXPRESSWAY</div><div class="name">REDEMPTION CITY</div></div>
@@ -548,7 +557,7 @@ function startCamp() {
   const ITEMS = shuffle([[-14, 60], [20, 50], [-50, 58], [64, 52], [-70, -10], [70, -16], [-30, -84], [26, -60], [-60, -58], [40, 70], [-22, 12], [12, -40]]).slice(0, S.plan.quest.n);
   for (const [x, z] of ITEMS) { const s = textSprite(S.plan.quest.item, 1.3); s.material.depthTest = true; s.position.set(x, 1.3, z); CW.add(s); K.items.push(s); K.all.push({ root: s }); }
   player.root.position.set(0, 0, 104); player.root.rotation.set(0, Math.PI, 0); scene.add(player.root); player.root.visible = true;
-  camera.position.set(0, 10, 116);
+  camera.position.set(0, 8.6, 111.6);
   hudMode('camp');
   toast('Drag to walk · Tap the ground to go there · Talk to pilgrims with ❗', 3600);
   setTimeout(() => { if (!S.paused && S.mode === 'camp') toast(`Side quest: ${S.plan.quest.text}`, 3600); }, 4000);
@@ -615,7 +624,7 @@ function updateCamp(dt) {
   doorBeacon.visible = mc >= DOOR_NEED && !toDoor; doorBeacon.position.set(DOOR[0], 25, DOOR[1]);
   const ang = Math.atan2(target[0] - K.x, target[1] - K.z);
   arrow.position.set(K.x + Math.sin(ang) * 1.7, 0.3, K.z + Math.cos(ang) * 1.7); arrow.rotation.y = ang; arrow.visible = td > 4;
-  camera.position.lerp(_pv.set(K.x, 11, K.z + 9), Math.min(1, dt * 5)); camera.lookAt(K.x, 1.2, K.z - 1.5);
+  camera.position.lerp(_pv.set(K.x, 8.6, K.z + 7.6), Math.min(1, dt * 5)); camera.lookAt(K.x, 1.0, K.z + 0.2);
   sunFollow(K.x, K.z);
   lanternLight.intensity = 1.6 * S.lantern / 100;
   fx.update(dt, 0, 0); lanternHalo(0);
@@ -719,7 +728,7 @@ function paintSelect() {
 document.querySelectorAll('#segGender button').forEach(b => b.addEventListener('click', () => { selG = b.dataset.g; selO = 0; sfx.tap(); paintSelect(); }));
 function updateSelect(dt) {
   player.root.rotation.y = Math.sin(S.t * 0.8) * 0.7; poseHuman(player, 'idle', dt);
-  camera.position.lerp(_pv.set(0, 1.9, 5.2), Math.min(1, dt * 4)); camera.lookAt(0, 0.35, 0);
+  camera.position.lerp(_pv.set(0, 2.0, 6.8), Math.min(1, dt * 4)); camera.lookAt(0, -0.3, 0);
   sunFollow(0, 0); fx.update(dt, 0, 0); lanternHalo(0);
 }
 $('#btnNew').addEventListener('click', () => {
@@ -854,6 +863,7 @@ window.__lr3dReady = true;
 requestAnimationFrame(loop);
 
 window.LR = {
+  playerBox() { const b = new THREE.Box3().setFromObject(player.root); let x0 = 1e9, x1 = -1e9, y0 = 1e9, y1 = -1e9; for (let i = 0; i < 8; i++) { const v = new THREE.Vector3(i & 1 ? b.max.x : b.min.x, i & 2 ? b.max.y : b.min.y, i & 4 ? b.max.z : b.min.z).project(camera); x0 = Math.min(x0, v.x); x1 = Math.max(x1, v.x); y0 = Math.min(y0, v.y); y1 = Math.max(y1, v.y); } return { left: (x0 + 1) / 2, right: (x1 + 1) / 2, top: (1 - y1) / 2, bottom: (1 - y0) / 2, h: (y1 - y0) / 2 }; },
   get state() { return { mode: S.mode, paused: S.paused, score: S.score, lantern: S.lantern, chapter: save && save.chapter, stop: R && R.stopIdx, dist: R && R.dist, met: K && K.met, fps: perf.fps, calls: renderer.info.render.calls, tris: renderer.info.render.triangles, lowered: perf.lowered }; },
   skipRun() { if (R) { R.dist = RUN_LEN - 3; R.stopIdx = C.STOPS.length - 1; R.moralIdx = 3; setMoralNPC(null); } },
   near(i) { if (!K) return; const h = K.enc[i]; K.x = h.root.position.x; K.z = h.root.position.z + 2.2; K.tx = null; },
