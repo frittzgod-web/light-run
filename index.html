@@ -3,69 +3,92 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
-<meta name="theme-color" content="#0b3d2a">
-<title>Redemption City: Light Run</title>
+<meta name="theme-color" content="#1e88e5">
+<title>Redemption City: Light Run 3D</title>
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22%3E%3Ctext y=%22.9em%22 font-size=%2290%22%3E🏮%3C/text%3E%3C/svg%3E">
 <link rel="stylesheet" href="style.css">
 </head>
 <body>
-<canvas id="game"></canvas>
-
+<canvas id="c3d"></canvas>
 <button id="snd" class="iconbtn" aria-label="Toggle sound">🔊</button>
 
-<!-- Title -->
+<div id="hud" class="hidden">
+  <div class="hrow">
+    <div class="pill lant"><span>🏮</span><div class="bar"><i id="hLant"></i><b id="hFloor"></b></div></div>
+    <div class="pill score" id="hScore">✨ 0</div>
+  </div>
+  <div class="pill info" id="hInfo">Next stop: Ojota</div>
+  <div class="prog"><i id="hProg"></i></div>
+</div>
+<button id="prompt" class="hidden"></button>
+<div id="joy" class="hidden"><i></i></div>
+
+<!-- Title poster -->
 <section id="title" class="screen show">
-  <div class="title-card">
-    <div class="lantern-big">🏮</div>
-    <h1>Redemption City<br><span>Light Run</span></h1>
-    <p class="tag">From Lagos to KM 46 — gather light, help pilgrims, reach the Holy Ghost Service.</p>
-    <label for="pname">Your name, pilgrim</label>
-    <input id="pname" maxlength="16" placeholder="e.g. Tobi" autocomplete="off">
-    <button id="btnStart" class="btn primary">Start the journey ▶</button>
-    <button id="btnHow" class="btn">How to play</button>
+  <div class="poster">
+    <div class="burst"></div>
+    <div class="ribbon">LAGOS ➜ KM 46</div>
+    <h1 class="t1">REDEMPTION CITY</h1>
+    <h1 class="t2">LIGHT RUN</h1>
+    <div class="t3">3D · Endless chapters</div>
+  </div>
+  <div class="menu">
+    <button id="btnContinue" class="btn primary hidden">▶ Continue</button>
+    <button id="btnNew" class="btn primary">Start a new journey</button>
+    <div class="row2"><button id="btnHow" class="btn">How to play</button><a class="btn" href="classic/">Classic 2D</a></div>
     <p id="hiscore" class="small"></p>
   </div>
 </section>
 
-<!-- How to play -->
-<section id="howto" class="screen">
+<!-- Character select -->
+<section id="select" class="screen bottom">
+  <div class="card selcard">
+    <h2>Choose your pilgrim</h2>
+    <input id="pname" maxlength="16" placeholder="Your name" autocomplete="off">
+    <div class="seg" id="segGender"><button data-g="m">👦🏾 Boy</button><button data-g="f">👧🏾 Girl</button></div>
+    <div class="seg small3" id="segOutfit"></div>
+    <div class="skins" id="skins"></div>
+    <button id="btnGo" class="btn primary">Let's go! ▶</button>
+    <button class="btn ghost" id="btnSelBack">Back</button>
+  </div>
+</section>
+
+<section id="howto" class="screen dim">
   <div class="card scroll">
     <h2>How to play</h2>
     <h3>🛣️ Part 1 · Expressway Run</h3>
     <ul>
       <li><b>Swipe left / right</b> to change lane. <b>Swipe up or tap</b> to jump.</li>
-      <li>Jump over <b>potholes</b> and <b>cones</b>. Dodge <b>danfos</b>, <b>okadas</b> and <b>hawkers</b>.</li>
-      <li>Collect ✨ <b>light orbs</b> to brighten your lantern.</li>
-      <li>At every bus stop, answer a quick <b>Bible question</b> for bonus light.</li>
-      <li>Along the way people will need help. Stopping costs time, but kindness gives <b>lasting light</b>.</li>
+      <li>Jump <b>potholes</b> and <b>cones</b>. Dodge <b>danfos</b>, <b>okadas</b>, <b>trucks</b> and <b>hawkers</b>.</li>
+      <li>Grab ✨ <b>light orbs</b>. Answer a <b>Bible question</b> at every bus stop.</li>
+      <li>Stop for people in need: it costs time, but gives <b>lasting light</b>.</li>
     </ul>
     <h3>⛺ Part 2 · Inside the Camp</h3>
     <ul>
-      <li><b>Tap or drag</b> where you want to walk.</li>
-      <li>Talk to pilgrims with a <b>❗</b>. Your choices show compassion, love, humility, holiness, selflessness, honesty and forgiveness.</li>
-      <li>Follow the golden arrow. Reach the <b>Main Auditorium</b> for the Holy Ghost Service.</li>
+      <li><b>Drag anywhere</b> for the joystick, or <b>tap the ground</b> to walk there.</li>
+      <li>Walk up to pilgrims with a <b>❗</b> and tap <b>Talk</b>. Follow the golden beacon.</li>
+      <li>Find the side-quest items. Then enter the <b>Main Auditorium</b>.</li>
     </ul>
-    <p class="small">Desktop: arrow keys / WASD, Space to jump.</p>
+    <h3>📖 Endless chapters</h3>
+    <ul><li>Each Holy Ghost Service unlocks the next chapter with new pilgrims, dilemmas and events. Your virtues and lantern carry over.</li></ul>
+    <p class="small">Desktop: arrows / WASD, Space to jump, E to talk.</p>
     <button class="btn primary" data-close="howto">Got it!</button>
   </div>
 </section>
 
-<!-- Generic modal (quiz, info) -->
-<section id="modal" class="screen dim">
-  <div class="card scroll" id="modalBody"></div>
+<section id="modal" class="screen dim"><div class="card scroll" id="modalBody"></div></section>
+<section id="dialog" class="sheet"><div class="sheet-inner" id="dialogBody"></div></section>
+<section id="end" class="screen"><div class="card scroll" id="endBody"></div></section>
+<section id="nogl" class="screen dim">
+  <div class="card"><h2>Your phone needs the classic version</h2><p>This phone or browser can't run the 3D graphics (WebGL is unavailable or too slow). The classic 2D version has the same story and works everywhere.</p>
+  <a class="btn primary" href="classic/">Play the classic version ▶</a><button class="btn ghost" data-close="nogl">Try 3D anyway</button></div>
 </section>
-
-<!-- Dialogue sheet -->
-<section id="dialog" class="sheet">
-  <div class="sheet-inner" id="dialogBody"></div>
-</section>
-
-<!-- Ending -->
-<section id="end" class="screen">
-  <div class="card scroll" id="endBody"></div>
-</section>
-
 <div id="toast"></div>
-<script src="game.js"></script>
+<div id="loading">Loading Light Run… 🏮</div>
+<script>
+  // Fallback: suggest classic if the module never starts (very old browsers)
+  setTimeout(function(){ if(!window.__lr3dReady){ var l=document.getElementById('loading'); if(l) l.innerHTML='Still loading… <a href="classic/" style="color:#ffd23f">Play the classic version</a>'; } }, 7000);
+</script>
+<script type="module" src="js/main.js"></script>
 </body>
 </html>

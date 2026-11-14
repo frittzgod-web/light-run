@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<meta name="theme-color" content="#0b3d2a">
+<title>Redemption City: Light Run</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22%3E%3Ctext y=%22.9em%22 font-size=%2290%22%3E🏮%3C/text%3E%3C/svg%3E">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<canvas id="game"></canvas>
+
+<button id="snd" class="iconbtn" aria-label="Toggle sound">🔊</button>
+
+<!-- Title -->
+<section id="title" class="screen show">
+  <div class="title-card">
+    <div class="lantern-big">🏮</div>
+    <h1>Redemption City<br><span>Light Run</span></h1>
+    <p class="tag">From Lagos to KM 46 — gather light, help pilgrims, reach the Holy Ghost Service.</p>
+    <label for="pname">Your name, pilgrim</label>
+    <input id="pname" maxlength="16" placeholder="e.g. Tobi" autocomplete="off">
+    <button id="btnStart" class="btn primary">Start the journey ▶</button>
+    <button id="btnHow" class="btn">How to play</button>
+    <p id="hiscore" class="small"></p>
+  </div>
+</section>
+
+<!-- How to play -->
+<section id="howto" class="screen">
+  <div class="card scroll">
+    <h2>How to play</h2>
+    <h3>🛣️ Part 1 · Expressway Run</h3>
+    <ul>
+      <li><b>Swipe left / right</b> to change lane. <b>Swipe up or tap</b> to jump.</li>
+      <li>Jump over <b>potholes</b> and <b>cones</b>. Dodge <b>danfos</b>, <b>okadas</b> and <b>hawkers</b>.</li>
+      <li>Collect ✨ <b>light orbs</b> to brighten your lantern.</li>
+      <li>At every bus stop, answer a quick <b>Bible question</b> for bonus light.</li>
+      <li>Along the way people will need help. Stopping costs time, but kindness gives <b>lasting light</b>.</li>
+    </ul>
+    <h3>⛺ Part 2 · Inside the Camp</h3>
+    <ul>
+      <li><b>Tap or drag</b> where you want to walk.</li>
+      <li>Talk to pilgrims with a <b>❗</b>. Your choices show compassion, love, humility, holiness, selflessness, honesty and forgiveness.</li>
+      <li>Follow the golden arrow. Reach the <b>Main Auditorium</b> for the Holy Ghost Service.</li>
+    </ul>
+    <p class="small">Desktop: arrow keys / WASD, Space to jump.</p>
+    <button class="btn primary" data-close="howto">Got it!</button>
+  </div>
+</section>
+
+<!-- Generic modal (quiz, info) -->
+<section id="modal" class="screen dim">
+  <div class="card scroll" id="modalBody"></div>
+</section>
+
+<!-- Dialogue sheet -->
+<section id="dialog" class="sheet">
+  <div class="sheet-inner" id="dialogBody"></div>
+</section>
+
+<!-- Ending -->
+<section id="end" class="screen">
+  <div class="card scroll" id="endBody"></div>
+</section>
+
+<div id="toast"></div>
+<script src="game.js"></script>
+</body>
+</html>
