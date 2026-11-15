@@ -1,5 +1,5 @@
 // Props, vehicles and scenery built from merged toon geometry
-import { THREE, P, G, merge, mergedMesh, VC, outline, toon, signTex, signMesh, makeHuman, randomLook, poseHuman } from './toon.js';
+import { THREE, P, G, merge, mergedMesh, VC, outline, toon, signTex, signMesh, makeHuman, randomLook, poseHuman, bakedHuman } from './toon.js';
 
 const rnd = (a, b) => a + Math.random() * (b - a);
 const pick = a => a[Math.floor(Math.random() * a.length)];
@@ -94,6 +94,7 @@ export function hawker() {
   g.userData = { len: 0.9, human: h };
   return g;
 }
+const COCO = new THREE.SphereGeometry(0.5, 6, 4);   // low-poly coconuts (x70 palms adds up)
 export function palmGeo() {
   const parts = []; let x = 0, y = 0; const lean = rnd(-0.12, 0.12);
   for (let i = 0; i < 6; i++) { parts.push(P(G.cyl6, i % 2 ? '#8d6e4a' : '#a1805a', x, y + 0.6, 0, 0, 0, lean, 0.42 - i * 0.03, 1.25, 0.42 - i * 0.03)); y += 1.15; x -= lean * 1.15; }
@@ -101,7 +102,7 @@ export function palmGeo() {
     const a = i / 8 * Math.PI * 2;
     parts.push(P(G.cone, i % 2 ? '#2e9e3e' : '#43c24f', x + Math.cos(a) * 1.25, y + 0.1, Math.sin(a) * 1.25, Math.sin(a) * 1.25, 0, -Math.cos(a) * 1.25, 0.55, 3.0, 0.14));
   }
-  for (let i = 0; i < 3; i++) parts.push(P(G.sphLo, '#6d4c2f', x + Math.cos(i * 2) * 0.3, y - 0.25, Math.sin(i * 2) * 0.3, 0, 0, 0, 0.36, 0.36, 0.36));
+  for (let i = 0; i < 3; i++) parts.push(P(COCO, '#6d4c2f', x + Math.cos(i * 2) * 0.3, y - 0.25, Math.sin(i * 2) * 0.3, 0, 0, 0, 0.36, 0.36, 0.36));
   return merge(parts);
 }
 export function treeGeo() {
@@ -273,9 +274,10 @@ export function cow() {
   const g = new THREE.Group(); g.add(mergedMesh(parts, 0.04, false)); return g;
 }
 export function herder() {
-  const h = makeHuman({ ...randomLook({ gender: 'm', cap: true }), top: pick(['#fff8e1', '#90caf9', '#a1887f']), topTex: null, headColor: '#c62828' }, false);
-  const staff = mergedMesh([P(G.cyl6, '#6d4c41', 0, 0.9, 0, 0, 0, 0.12, 0.06, 2.1, 0.06)], 0.02, false); staff.position.set(0.45, 0, 0.2); h.root.add(staff);
-  h.root.userData.human = h; return h.root;
+  // baked into one mesh (staff included): 1 draw call instead of ~14
+  return bakedHuman({ ...randomLook({ gender: 'm', cap: true }), top: pick(['#fff8e1', '#90caf9', '#a1887f']), topTex: null, headColor: '#c62828' }, 'idle', 1, h => {
+    const staff = mergedMesh([P(G.cyl6, '#6d4c41', 0, 0.9, 0, 0, 0, 0.12, 0.06, 2.1, 0.06)], 0, false); staff.position.set(0.45, 0, 0.2); h.root.add(staff);
+  });
 }
 // Ojota-style flyover crossing the expressway
 export function flyover() {
@@ -290,4 +292,24 @@ export function flyover() {
 export function textSprite(txt, size = 1.2) {
   const t = signTex(txt, '', 'rgba(0,0,0,0)', '#fff', 128, 128, false);
   const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: t, depthTest: false, transparent: true })); s.scale.set(size, size, 1); s.renderOrder = 10; return s;
+}
+// small roadside props for variety: recharge-card kiosk, vulcaniser tyre stack, overhead water tank, generator
+export function roadProp(k = pick(['kiosk', 'tyres', 'tank', 'gen'])) {
+  const parts = [];
+  if (k === 'kiosk') {
+    const c = pick(['#ffcc00', '#e53935', '#1e88e5']);
+    parts.push(P(G.box, c, 0, 1.15, 0, 0, 0, 0, 1.6, 2.3, 1.3), P(G.box, '#fafafa', 0, 2.4, 0, 0, 0, 0, 1.9, 0.18, 1.6), P(G.box, '#3e2723', 0, 1.1, 0.66, 0, 0, 0, 1.2, 0.7, 0.04),
+      P(G.box, '#ffffff', 0, 1.9, 0.66, 0, 0, 0, 1.3, 0.35, 0.03), P(G.box, '#555', 0, 0.75, 0.7, 0, 0, 0, 1.5, 0.08, 0.3));
+  } else if (k === 'tyres') {
+    const tyre = new THREE.TorusGeometry(0.42, 0.17, 6, 14);
+    for (let i = 0; i < 4; i++) parts.push(P(tyre, '#1c1c1c', rnd(-0.05, 0.05), 0.17 + i * 0.32, 0, Math.PI / 2, 0, 0));
+    parts.push(P(tyre, '#262626', 1.0, 0.58, 0.2, 0, 0.3, 0), P(G.box, '#c62828', -0.9, 1.0, 0, 0, 0, 0, 0.08, 2.0, 0.08), P(G.box, '#ffeb3b', -0.9, 1.9, 0.2, 0, 0, 0, 0.06, 0.4, 0.5));
+  } else if (k === 'tank') {
+    for (const [x, z] of [[-0.7, -0.7], [0.7, -0.7], [-0.7, 0.7], [0.7, 0.7]]) parts.push(P(G.box, '#78909c', x, 1.6, z, 0, 0, 0, 0.12, 3.2, 0.12));
+    parts.push(P(G.box, '#90a4ae', 0, 3.2, 0, 0, 0, 0, 1.7, 0.12, 1.7), P(G.cyl, '#1565c0', 0, 4.0, 0, 0, 0, 0, 1.5, 1.5, 1.5), P(G.cyl, '#0d47a1', 0, 4.8, 0, 0, 0, 0, 0.5, 0.15, 0.5), P(G.box, '#cfd8dc', 0.8, 1.6, 0, 0, 0, 0, 0.08, 3.2, 0.08));
+  } else {
+    parts.push(P(G.box, '#c62828', 0, 0.55, 0, 0, 0, 0, 1.3, 0.8, 0.8), P(G.box, '#222', 0, 0.12, 0, 0, 0, 0, 1.4, 0.1, 0.9), P(G.box, '#424242', 0.45, 0.62, 0.41, 0, 0, 0, 0.3, 0.4, 0.02),
+      P(G.cyl6, '#9e9e9e', -0.5, 1.05, 0, 0, 0, 0, 0.1, 0.25, 0.1), P(G.box, '#ffeb3b', -0.2, 0.75, 0.41, 0, 0, 0, 0.35, 0.16, 0.02));
+  }
+  const g = new THREE.Group(); g.add(mergedMesh(parts, 0.035, false)); return g;
 }

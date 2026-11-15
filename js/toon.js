@@ -175,6 +175,7 @@ export const CLOUD = canvasTex(256, 128, (x) => {
 });
 
 // ---- Particles (single draw call) ----
+const PCOL = new Map();
 export class Particles {
   constructor(n = 220) {
     this.n = n; this.i = 0;
@@ -191,21 +192,24 @@ export class Particles {
     this.points = new THREE.Points(g, this.mat); this.points.frustumCulled = false; this.geo = g;
   }
   emit(x, y, z, vx, vy, vz, life, size, color, grow = 1.5) {
-    const i = this.i; this.i = (this.i + 1) % this.n; const c = new THREE.Color(color);
-    this.pos.set([x, y, z], i * 3); this.vel.set([vx, vy, vz], i * 3); this.col.set([c.r, c.g, c.b], i * 3);
-    this.life[i] = life; this.max[i] = life; this.s0[i] = size; this.grow[i] = grow; this.size[i] = size; this.alpha[i] = 1;
+    const i = this.i; this.i = (this.i + 1) % this.n; let c = PCOL.get(color); if (!c) { c = new THREE.Color(color); PCOL.set(color, c); }
+    const j = i * 3, P = this.pos, V = this.vel, C = this.col; P[j] = x; P[j + 1] = y; P[j + 2] = z; V[j] = vx; V[j + 1] = vy; V[j + 2] = vz; C[j] = c.r; C[j + 1] = c.g; C[j + 2] = c.b;
+    this.live = 3; this.life[i] = life; this.max[i] = life; this.s0[i] = size; this.grow[i] = grow; this.size[i] = size; this.alpha[i] = 1;
   }
   update(dt, dz = 0, gravity = 0) {
+    // skip work + GPU upload entirely when nothing is alive (pooled, allocation-free)
+    if (!this.live) return; let alive = 0;
     for (let i = 0; i < this.n; i++) {
       if (this.life[i] <= 0) { this.alpha[i] = 0; continue; }
       this.life[i] -= dt; const k = 1 - this.life[i] / this.max[i];
       this.vel[i * 3 + 1] -= gravity * dt;
       this.pos[i * 3] += this.vel[i * 3] * dt; this.pos[i * 3 + 1] += this.vel[i * 3 + 1] * dt; this.pos[i * 3 + 2] += (this.vel[i * 3 + 2] + dz) * dt;
-      this.size[i] = this.s0[i] * (1 + k * this.grow[i]); this.alpha[i] = Math.max(0, 1 - k) * 0.6;
+      this.size[i] = this.s0[i] * (1 + k * this.grow[i]); this.alpha[i] = Math.max(0, 1 - k) * 0.6; alive++;
     }
+    if (!alive) this.live--;
     this.geo.attributes.position.needsUpdate = true; this.geo.attributes.size.needsUpdate = true; this.geo.attributes.alpha.needsUpdate = true; this.geo.attributes.color.needsUpdate = true;
   }
-  clear() { this.life.fill(0); this.alpha.fill(0); }
+  clear() { this.life.fill(0); this.alpha.fill(0); this.live = 2; }
 }
 
 // ---- Characters ----
@@ -404,7 +408,10 @@ export function poseHuman(h, mode, dt, speed = 1) {
   const p = h.phase, s = Math.sin(p), c = Math.cos(p);
   const { L, R } = h;
   let lean = h.o.old ? 0.18 : 0, bob = 0;
-  const set = (o, x, z = 0) => { if (o) { o.rotation.x = x; o.rotation.z = z; } };
+  // blend smoothly for ~0.2s after a mode change (jump → run, slide → run …); dt = 0 snaps
+  if (h.mode !== mode) { h.mode = mode; h.blend = dt > 0 ? 0.22 : 0; }
+  let k = 1; if (h.blend > 0 && dt > 0) { h.blend -= dt; k = 1 - Math.exp(-22 * dt); }
+  const set = k === 1 ? (o, x, z = 0) => { if (o) { o.rotation.x = x; o.rotation.z = z; } } : (o, x, z = 0) => { if (o) { o.rotation.x += (x - o.rotation.x) * k; o.rotation.z += (z - o.rotation.z) * k; } };
   if (mode === 'run') {
     set(L.hip, s * 0.95); set(R.hip, -s * 0.95);
     set(L.kn, Math.max(0, -s) * 1.3 + 0.2); set(R.kn, Math.max(0, s) * 1.3 + 0.2);
@@ -439,5 +446,61 @@ export function poseHuman(h, mode, dt, speed = 1) {
     set(L.sh, Math.sin(p) * 0.05, 0.12); set(R.sh, -Math.sin(p) * 0.05, -0.12); set(L.el, -0.15); set(R.el, -0.15);
     bob = Math.sin(p) * 0.012; h.head.rotation.y = Math.sin(p * 0.37) * 0.35;
   }
-  h.spine.rotation.x = lean; h.hips.position.y = 0.8 + bob;
+  if (k === 1) { h.spine.rotation.x = lean; h.hips.position.y = 0.8 + bob; } else { h.spine.rotation.x += (lean - h.spine.rotation.x) * k; h.hips.position.y += (0.8 + bob - h.hips.position.y) * k; }
+}
+
+// ---- Baking: collapse an articulated human into ONE vertex-coloured mesh (1 draw call + 1 outline) ----
+const avgCache = new Map();
+function texAvg(t) {
+  if (avgCache.has(t)) return avgCache.get(t);
+  let col = new THREE.Color('#888888');
+  try { const c = document.createElement('canvas'); c.width = c.height = 4; const x = c.getContext('2d'); x.drawImage(t.image, 0, 0, 4, 4); const d = x.getImageData(0, 0, 4, 4).data; let r = 0, g = 0, b = 0; for (let i = 0; i < 64; i += 4) { r += d[i]; g += d[i + 1]; b += d[i + 2]; } col = new THREE.Color().setRGB(r / 16 / 255, g / 16 / 255, b / 16 / 255, THREE.SRGBColorSpace); } catch (e) {}
+  avgCache.set(t, col); return col;
+}
+const _bm = new THREE.Matrix4(), _bi = new THREE.Matrix4(), _bc = new THREE.Color();
+export function bakeGeo(root) {
+  root.updateMatrixWorld(true); _bi.copy(root.matrixWorld).invert();
+  const list = []; let n = 0;
+  root.traverse(o => {
+    if (!o.isMesh || o.userData.outline || o.isInstancedMesh || !o.visible) return;
+    const g = o.geometry.index ? o.geometry.toNonIndexed() : o.geometry.clone();
+    _bm.multiplyMatrices(_bi, o.matrixWorld); g.applyMatrix4(_bm);
+    list.push([g, o.material]); n += g.attributes.position.count;
+  });
+  const pos = new Float32Array(n * 3), nor = new Float32Array(n * 3), col = new Float32Array(n * 3); let off = 0;
+  for (const [g, m] of list) {
+    const cnt = g.attributes.position.count; pos.set(g.attributes.position.array, off * 3); nor.set(g.attributes.normal.array, off * 3);
+    if (m.vertexColors && g.attributes.color) col.set(g.attributes.color.array.subarray(0, cnt * 3), off * 3);
+    else { _bc.copy(m.color || _bc.set('#888')); if (m.map) _bc.multiply(texAvg(m.map)); for (let k = 0; k < cnt; k++) { col[(off + k) * 3] = _bc.r; col[(off + k) * 3 + 1] = _bc.g; col[(off + k) * 3 + 2] = _bc.b; } }
+    off += cnt; g.dispose();
+  }
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.BufferAttribute(pos, 3)); geo.setAttribute('normal', new THREE.BufferAttribute(nor, 3)); geo.setAttribute('color', new THREE.BufferAttribute(col, 3));
+  geo.computeBoundingSphere(); return geo;
+}
+// frames: list of phases to bake for a cheap flip-book animation (geometry swap, zero extra draw calls)
+export function bakedHuman(o, mode = 'idle', frames = 1, extra) {
+  const h = makeHuman(o, false); if (extra) extra(h);
+  const geos = [];
+  for (let f = 0; f < frames; f++) { h.phase = frames > 1 ? f / frames * Math.PI * 2 / (mode === 'wave' ? 3 : 1) : 0.3; poseHuman(h, mode, 0); geos.push(bakeGeo(h.root)); }
+  h.head.geometry.dispose();
+  const m = new THREE.Mesh(geos[0], VC); m.castShadow = false; outline(m, 0.025);
+  const root = new THREE.Group(); root.add(m);
+  root.userData.baked = { mesh: m, geos, f: 0, t: Math.random() * frames };
+  return root;
+}
+export function stepBaked(root, dt, fps = 8) {
+  const b = root.userData.baked; if (!b || b.geos.length < 2) return;
+  b.t += dt * fps; const f = Math.floor(b.t) % b.geos.length;
+  if (f !== b.f) { b.f = f; b.mesh.geometry = b.geos[f]; if (b.mesh.children[0]) b.mesh.children[0].geometry = b.geos[f]; }
+}
+// cheap baked ambient occlusion: darken vertex colours near the ground (bases, doorways, under eaves)
+export function aoBake(root, h = 2.6, min = 0.6) {
+  root.traverse(o => {
+    const g = o.geometry; if (!o.isMesh || o.userData.outline || !g || !g.attributes.color || g.userData.ao) return;
+    g.userData.ao = true; const p = g.attributes.position, c = g.attributes.color;
+    for (let i = 0; i < p.count; i++) { const t = Math.min(1, Math.max(0, p.getY(i) / h)), k = min + (1 - min) * t * t * (3 - 2 * t); c.setXYZ(i, c.getX(i) * k, c.getY(i) * k, c.getZ(i) * k); }
+    c.needsUpdate = true;
+  });
+  return root;
 }

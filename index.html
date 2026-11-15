@@ -4,8 +4,15 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
 <meta name="theme-color" content="#1e88e5">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Light Run">
+<meta name="description" content="Run from Lagos to Redemption City (KM 46) with your lantern. A Bible adventure runner for teens.">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="icons/icon-192.png">
 <title>Redemption City: Light Run 3D</title>
-<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22%3E%3Ctext y=%22.9em%22 font-size=%2290%22%3E🏮%3C/text%3E%3C/svg%3E">
+<link rel="icon" href="icons/icon-192.png">
 <link rel="stylesheet" href="style.css">
 </head>
 <body>
@@ -20,6 +27,7 @@
 <div id="bossCard"></div>
 <div id="gust"></div>
 <button id="snd" class="iconbtn" aria-label="Toggle sound">🔊</button>
+<button id="btnPause" class="iconbtn pausebtn hidden" aria-label="Pause">⏸</button>
 
 <div id="hud" class="hidden">
   <div class="hrow">
@@ -44,14 +52,21 @@
     <h1 class="t2">LIGHT RUN</h1>
     <div class="t3">3D · One epic run · Endless chapters</div>
   </div>
-  <div class="menu">
-    <button id="btnContinue" class="btn primary hidden">▶ Continue</button>
-    <button id="btnNew" class="btn primary">Start a new journey</button>
-    <div class="row2"><button id="btnHow" class="btn">How to play</button><a class="btn" href="classic/">Classic 2D</a></div>
-    <div class="row3"><button id="btnDaily" class="btn slim">📅 Daily</button><button id="btnShop" class="btn slim">🛍️ Shop</button><button id="btnBoard" class="btn slim">🏆 Group</button></div>
-    <button id="btnVerses" class="btn slim">📜 My Verses</button>
-    <p id="streakNote" class="small streak-note"></p>
+  <div class="menu glass">
     <p id="challenge" class="small challenge hidden"></p>
+    <button id="btnContinue" class="btn primary play hidden">▶ Continue</button>
+    <button id="btnNew" class="btn primary play">▶ PLAY<small>Start your journey</small></button>
+    <div class="tiles">
+      <button id="btnCreator" class="tile"><i>🧍🏾</i><span>Creator</span></button>
+      <button id="btnShop" class="tile"><i>🛍️</i><span>Shop</span></button>
+      <button id="btnDaily" class="tile"><i>📅</i><span>Daily</span></button>
+      <button id="btnBoard" class="tile"><i>🏆</i><span>Group</span></button>
+      <button id="btnVerses" class="tile"><i>📜</i><span>Verses</span></button>
+      <button id="btnSettings" class="tile"><i>⚙️</i><span>Settings</span></button>
+      <button id="btnHow" class="tile"><i>❓</i><span>How to play</span></button>
+      <a class="tile" href="classic/"><i>🕹️</i><span>Classic 2D</span></a>
+    </div>
+    <p id="streakNote" class="small streak-note"></p>
     <p id="hiscore" class="small"></p>
   </div>
 </section>
@@ -83,6 +98,12 @@
       <li>Spend 💡 light in the <b>Shop</b> on outfits, lanterns and trails. Do 3 <b>daily challenges</b> and keep your streak.</li>
       <li>Stop for people in need: it costs time, but gives <b>lasting light</b>.</li>
     </ul>
+    <h3>🧍🏾 Make your pilgrim</h3>
+    <ul>
+      <li>Tap <b>Creator</b> on the title screen. Pick body, skin tone, face, hair, top, bottom, shoes and extras, or tap <b>🎲 Randomise</b>.</li>
+      <li>Tap 🎨 for any custom colour. Drag the pilgrim to turn them around. Your <b>name tag</b> shows in camp and on the leaderboard.</li>
+      <li>Outfits and lanterns you buy in the <b>Shop</b> appear in the creator's <b>✨ Outfits</b> tab.</li>
+    </ul>
     <h3>⛺ Part 2 · Inside the Camp</h3>
     <ul>
       <li><b>Drag anywhere</b> for the joystick, or <b>tap the ground</b> to walk there.</li>
@@ -92,11 +113,36 @@
     </ul>
     <h3>📖 Endless chapters</h3>
     <ul><li>Each Holy Ghost Service unlocks the next chapter with new pilgrims, dilemmas and events. Your virtues and lantern carry over.</li></ul>
-    <p class="small">Desktop: arrows / WASD, Space to jump, E to talk.</p>
+    <h3>⚙️ Settings &amp; pause</h3>
+    <ul><li>Tap <b>⏸</b> during a run to pause. In <b>Settings</b> choose Graphics (Auto, High, Balanced or Battery saver), sound, music, vibration and reduce motion.</li>
+    <li>Add the game to your home screen to play full screen, even offline.</li></ul>
+    <p class="small">Desktop: arrows / WASD, Space to jump, E to talk, P or Esc to pause.</p>
     <button class="btn primary" data-close="howto">Got it!</button>
   </div>
 </section>
 
+<section id="settings" class="screen dim">
+  <div class="card scroll glass-card">
+    <h2>⚙️ Settings</h2>
+    <div class="setrow col"><b>Graphics</b><div class="seg" id="setGfx"><button data-v="auto">Auto</button><button data-v="high">High</button><button data-v="balanced">Balanced</button><button data-v="battery">Battery saver</button></div><span class="small" id="gfxNote"></span></div>
+    <label class="setrow"><b>🔊 Sound effects</b><input type="checkbox" id="setSound" class="tog"></label>
+    <label class="setrow"><b>🎵 Music</b><input type="checkbox" id="setMusic" class="tog"></label>
+    <label class="setrow" id="hapRow"><b>📳 Vibration</b><input type="checkbox" id="setHaptics" class="tog"></label>
+    <label class="setrow"><b>🌙 Reduce motion</b><input type="checkbox" id="setMotion" class="tog"></label>
+    <div class="row2"><button class="btn slim" id="btnTutAgain">🎓 Replay tutorial</button><button class="btn primary slim" data-close="settings">Done</button></div>
+  </div>
+</section>
+<section id="pause" class="screen dim">
+  <div class="card glass-card pausecard">
+    <h2>⏸ Paused</h2>
+    <p class="small" id="pauseNote">Take a breath. The road will wait for you.</p>
+    <button class="btn primary" id="btnResume">▶ Resume</button>
+    <div class="row2"><button class="btn slim" id="btnPauseSet">⚙️ Settings</button><button class="btn slim" id="btnPauseHow">❓ How to play</button></div>
+    <button class="btn ghost slim" id="btnQuit">🏠 Quit to title</button>
+  </div>
+</section>
+<div id="tut" class="hidden" aria-live="polite"><div class="tutbox"><div class="tuthand" id="tutHand">👆</div><div class="tuttxt" id="tutTxt"></div><div class="tutdots" id="tutDots"></div><button id="tutSkip" class="btn slim ghost">Skip tutorial</button></div></div>
+<div id="rotate"><div><div class="rotic">📱</div><b>Turn your phone upright</b><p>Light Run plays best in portrait.</p></div></div>
 <section id="shop" class="screen bottom"><div class="card selcard shopcard" id="shopBody"></div></section>
 <section id="modal" class="screen dim"><div class="card scroll" id="modalBody"></div></section>
 <section id="dialog" class="sheet"><div class="sheet-inner" id="dialogBody"></div></section>
@@ -106,12 +152,28 @@
   <a class="btn primary" href="classic/">Play the classic version ▶</a><button class="btn ghost" data-close="nogl">Try 3D anyway</button></div>
 </section>
 <div id="toast"></div>
-<div id="loading">Loading Light Run… 🏮</div>
+<div id="loading"><div class="ldbox"><div class="ldlogo">🏮</div><b>LIGHT RUN</b><div class="ldbar"><i id="ldFill"></i></div><span id="ldTxt">Loading… 0%</span></div></div>
 <script>
-  // Fallback: suggest classic if the module never starts (very old browsers)
-  setTimeout(function(){ if(!window.__lr3dReady){ var l=document.getElementById('loading'); if(l) l.innerHTML='Still loading… <a href="classic/" style="color:#ffd23f">Play the classic version</a>'; } }, 7000);
+  // Loading bar: stream the game files with progress (they land in the HTTP / offline cache), then start the module
+  (function(){
+    var FILES = [['js/vendor/three.min.js', 750000], ['js/main.js', 175000], ['js/content.js', 70000], ['js/toon.js', 40000], ['js/props.js', 27000], ['js/meta.js', 11000], ['js/look.js', 6000]];
+    var total = 0, got = {}, fill = document.getElementById('ldFill'), txt = document.getElementById('ldTxt');
+    FILES.forEach(function(f){ total += f[1]; got[f[0]] = 0; });
+    window.__lrProgress = function(p, label){ p = Math.max(0, Math.min(1, p)); if (fill) fill.style.transform = 'scaleX(' + p.toFixed(3) + ')'; if (txt) txt.textContent = (label || 'Loading…') + ' ' + Math.round(p * 100) + '%'; };
+    function paint(){ var s = 0; for (var k in got) s += got[k]; window.__lrProgress(0.85 * s / total); }
+    function start(){ window.__lrProgress(0.88, 'Building Lagos…'); var m = document.createElement('script'); m.type = 'module'; m.src = 'js/main.js'; document.body.appendChild(m); }
+    if (!window.fetch || !window.ReadableStream) { start(); return; }
+    Promise.all(FILES.map(function(f){
+      return fetch(f[0]).then(function(r){
+        if (!r.body || !r.body.getReader) { got[f[0]] = f[1]; paint(); return; }
+        var rd = r.body.getReader(), n = 0;
+        return (function pump(){ return rd.read().then(function(x){ if (x.done) { got[f[0]] = f[1]; paint(); return; } n += x.value.length; got[f[0]] = Math.min(f[1], n); paint(); return pump(); }); })();
+      }).catch(function(){});
+    })).then(start, start);
+    // Fallback: suggest classic if the module never starts (very old browsers)
+    setTimeout(function(){ if(!window.__lr3dReady){ var l=document.getElementById('ldTxt'); if(l) l.innerHTML='Still loading… <a href="classic/" style="color:#ffd23f">Play the classic version</a>'; } }, 12000);
+  })();
 </script>
 <script src="js/lb-config.js"></script>
-<script type="module" src="js/main.js"></script>
 </body>
 </html>
