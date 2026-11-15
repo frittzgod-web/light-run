@@ -209,3 +209,74 @@ ol.lb{list-style:none;padding:0;margin:8px 0}ol.lb li{display:flex;align-items:c
 ol.lb li span{width:26px;text-align:center;font-weight:900}ol.lb li b{flex:1}ol.lb li em{font-style:normal;font-weight:900;color:#0a6b3c}ol.lb li small{color:#999;width:48px;text-align:right}
 ol.lb li.me{background:#fff3c4;border-radius:10px}
 .lbmode{background:#eef6ff;border-radius:10px;padding:6px 8px}
+/* ===== v5: unobstructed run view + character creator ===== */
+#hud{left:calc(8px + env(safe-area-inset-left));right:calc(56px + env(safe-area-inset-right))}
+.hrow2{justify-content:flex-start;align-items:center;margin-top:5px;flex-wrap:nowrap}
+.hrow2 .pill.info{flex:0 1 auto;min-width:0;font-size:12px;padding:4px 10px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.hrow2 .pill.combo{font-size:12px;padding:3px 9px;flex:none}
+.hrow2 .pill.pow{font-size:12px;padding:3px 8px;flex:none}
+.hrow2 .pill.pow span{display:none}
+.hrow2 .pill.pow i{width:38px}
+#map{margin-top:2px}
+#hVerse{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:11.5px;padding:3px 8px;margin-top:4px;background:rgba(255,248,225,.82)}
+body.qon #hVerse{display:none}
+#hQ{margin:5px 2px 0;padding:5px 10px;border-width:1.5px;border-radius:12px;background:rgba(14,10,4,.62);backdrop-filter:blur(3px);-webkit-backdrop-filter:blur(3px);max-height:13dvh;overflow:hidden;animation:none;box-shadow:0 2px 8px rgba(0,0,0,.25)}
+#hQ.slide{animation:qslide .28s ease-out}
+@keyframes qslide{from{transform:translateY(-10px);opacity:0}to{transform:none;opacity:1}}
+#hQ .qq{font-size:15px;line-height:1.25;margin:0;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+#hQ .qn{font-size:11.5px;font-weight:700;opacity:.9;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#hQ .qn:empty{display:none}
+#hQ.ok{background:rgba(10,90,45,.78);border-color:#7CFC9A}#hQ.bad{background:rgba(90,55,10,.78);border-color:#ffb74d}
+#gLabels{position:fixed;inset:0;pointer-events:none;z-index:9}
+#gLabels .gl{position:absolute;left:0;top:0;max-width:31vw;display:flex;align-items:center;gap:4px;padding:4px 8px;border-radius:10px;border:2px solid #1a1206;color:#fff;font-weight:900;font-size:13px;line-height:1.15;box-shadow:0 3px 0 rgba(0,0,0,.35);will-change:transform;transition:opacity .2s}
+#gLabels .gl span{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+#gLabels .gl i{font-style:normal;font-size:11px;opacity:.85}
+#gLabels .g0{background:rgba(30,136,229,.9)}#gLabels .g1{background:rgba(142,36,170,.9)}#gLabels .g2{background:rgba(46,158,79,.9)}
+#gLabels .gl.ok{background:#ffd23f;color:#1a1206;transform-origin:center}#gLabels .gl.dim{opacity:.35}
+/* small corner toasts + side pops in the run */
+body.inrun #toast{top:auto;left:calc(8px + env(safe-area-inset-left));right:auto;transform:none;bottom:calc(10px + env(safe-area-inset-bottom));max-width:64vw;font-size:12px;padding:6px 10px;border-radius:12px;text-align:left;background:rgba(20,14,6,.7)}
+.popt{top:30%;font-size:16px}.popt.big{font-size:19px}.popt.dim{font-size:13px}
+/* compact zone/boss cards under the HUD */
+#zoneCard,#bossCard{top:calc(26% + env(safe-area-inset-top));min-width:0;padding:5px 14px;border-width:2px}
+#zoneCard b{font-size:18px}#zoneCard small{font-size:10px}#zoneCard span{font-size:11px}
+#bossCard{padding:6px 14px}#bossCard .bi{font-size:22px;display:inline-block;vertical-align:middle;margin-right:4px}#bossCard b{font-size:17px;display:inline-block;vertical-align:middle}#bossCard span{font-size:12px}
+#gust{transform:scale(.85)}
+/* bottom sheets: never more than ~40% of the screen */
+.sheet-inner{max-height:40dvh;padding:10px 14px 6px}
+.sheet .who .av{width:44px;height:44px;font-size:24px}
+.sheet .say{font-size:14px}
+.sheet .btn.opt{padding:10px 12px;font-size:14px;margin:6px 0}
+body.dlg-run #hud{opacity:.55}
+/* character creator */
+#select{pointer-events:none}
+#select .card{pointer-events:auto}
+.creator{max-height:56dvh;display:flex;flex-direction:column;padding:10px 12px 8px;gap:6px;max-width:440px}
+.creator .crow{display:flex;gap:6px}.creator .crow input{flex:1;min-width:0;margin:0}
+.creator .crow .btn{flex:none;margin:0;width:auto;padding:8px 12px}
+.ctabs{display:flex;gap:5px;overflow-x:auto;scrollbar-width:none;padding-bottom:2px;flex:none}
+.ctabs::-webkit-scrollbar{display:none}
+.ctabs button{flex:none;border:2px solid #1a1206;background:#fff3d6;border-radius:999px;padding:6px 10px;font-weight:900;font-size:13px;color:#1a1206}
+.ctabs button.on{background:#ffd23f;box-shadow:0 2px 0 #1a1206}
+.cbody{overflow-y:auto;flex:1;min-height:80px;-webkit-overflow-scrolling:touch}
+.cbody .clab{font-size:11px;font-weight:900;color:#7a5a20;text-transform:uppercase;letter-spacing:.5px;margin:6px 2px 4px}
+.cbody .opts{display:flex;flex-wrap:wrap;gap:5px}
+.cbody .opts button{border:2px solid #1a1206;background:#fff;border-radius:10px;padding:6px 9px;font-weight:800;font-size:13px;color:#1a1206}
+.cbody .opts button.on{background:#ffd23f;box-shadow:0 2px 0 #1a1206}
+.cbody .opts button.lock{background:#eee;color:#666;border-style:dashed}
+.cbody .opts button.lock.on{background:#ffe9a8;color:#1a1206}
+.cbody .sw{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+.cbody .sw button{width:30px;height:30px;border-radius:50%;border:2px solid #1a1206;padding:0}
+.cbody .sw button.on{outline:3px solid #ffd23f;outline-offset:1px;transform:scale(1.1)}
+.cbody .skins2 button{width:32px;height:32px}
+.cbody .cpick{position:relative;width:30px;height:30px;border-radius:50%;border:2px dashed #1a1206;display:grid;place-items:center;font-size:15px;overflow:hidden;background:#fff}
+.cbody .cpick input{position:absolute;inset:0;opacity:0;width:100%;height:100%;cursor:pointer}
+.cbody .pats{display:flex;flex-wrap:wrap;gap:5px}
+.cbody .pats button{border:2px solid #1a1206;border-radius:10px;padding:8px 8px;font-weight:900;font-size:11px;color:#fff;text-shadow:0 1px 2px #000;min-width:64px}
+.cbody .pats button.on{outline:3px solid #ffd23f;outline-offset:1px}
+.cbuy{display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-top:8px;background:#fff7e0;border:2px dashed #c9a65a;border-radius:12px;padding:6px 8px;font-size:13px}
+.cbuy .btn{width:auto;margin:0 0 0 auto;padding:6px 12px}
+.cfoot{display:flex;gap:6px;flex:none}.cfoot .btn{margin:0}.cfoot .ghost{flex:0 0 auto;width:auto}.cfoot #btnSelShop{flex:0 0 auto;width:auto}.cfoot .primary{flex:1}
+.chint{text-align:center;margin:0;opacity:.7}
+@media (max-height:700px){.creator{max-height:60dvh}}
+body.dlg-run #toast,body.dlg-run #pops,body.dlg-run #gLabels{display:none}
+#bossCard.win{max-width:300px;padding:6px 12px}#bossCard.win b{font-size:15px;display:block}#bossCard.win span{font-size:12px;line-height:1.3}#bossCard.win small{font-size:11px}
