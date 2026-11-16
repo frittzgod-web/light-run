@@ -13,7 +13,7 @@ This file lists **every question and every verse** used in the three playable bo
 - Stars: ★ finish the vision · ★★ two of the three questions right · ★★★ all three right and the whole verse collected.
 
 **Scenery and bosses (for context):**
-- **Genesis: The Garden of Eden.** Boss: *The great flood*. The waters rise! Leap the floating logs and ride out the waves (Genesis 7). When the boss is beaten, the game shows Genesis 9:13: “I do set my bow in the cloud, and it shall be for a token of a covenant between me and the earth.”
+- **Genesis: The Garden of Eden.** Boss: *The great flood*. The waters rise! Waves roll down one lane at a time: jump them or change lane (Genesis 7). When the boss is beaten, the game shows Genesis 9:13: “I do set my bow in the cloud, and it shall be for a token of a covenant between me and the earth.”
 - **Exodus: Through the Red Sea.** Boss: *Pharaoh's chariots*. Chariots charge from behind! Leave the warned lane (Exodus 14). When the boss is beaten, the game shows Exodus 14:14: “The LORD shall fight for you, and ye shall hold your peace.”
 - **Leviticus: The Holy Road & the Tabernacle.** Boss: *The aqueduct shakes*. Stones are falling! Watch the shadows and keep your lamp burning. When the boss is beaten, the game shows Leviticus 6:13: “The fire shall ever be burning upon the altar; it shall never go out.”
 

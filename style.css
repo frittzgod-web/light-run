@@ -521,3 +521,4 @@ body.qon #hBoss{display:none}
 /* v11: outside the run, toasts sit at the bottom so they never cover a card's heading */
 body:not(.inrun) #toast{top:auto;bottom:calc(22px + env(safe-area-inset-bottom));max-width:90vw;pointer-events:none}
 #bible .bmhead{gap:8px}#bible .bmhead h2{white-space:nowrap;font-size:clamp(20px,6.4vw,26px);min-width:0;overflow:hidden;text-overflow:ellipsis}
+#bible .bmhead h2{font-size:21px!important}
