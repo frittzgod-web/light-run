@@ -168,8 +168,13 @@ export function bridge() {
   // bus shelter on the right
   parts.push(P(G.box, '#ffffff', 8.5, 2.6, 4.5, 0, 0, 0, 4, 0.15, 2.2), P(G.box, '#9e9e9e', 7, 1.3, 4.5, 0, 0, 0, 0.12, 2.6, 0.12), P(G.box, '#9e9e9e', 10, 1.3, 4.5, 0, 0, 0, 0.12, 2.6, 0.12), P(G.box, '#ffb300', 8.5, 0.5, 5.2, 0, 0, 0, 3.4, 0.12, 0.5));
   const g = new THREE.Group(); g.add(mergedMesh(parts, 0.06, false));
-  const sign = signMesh(signTex('OJOTA', 'BUS STOP'), 9, 2.4); sign.position.set(0, y + 1.6, 1.6); g.add(sign);
-  const back = new THREE.Mesh(new THREE.BoxGeometry(9.3, 2.7, 0.15), toon('#0a6b3c')); back.position.set(0, y + 1.6, 1.5); g.add(back);
+  // v8: the stop sign stands at the roadside on two posts beside the shelter, low and angled to the runner, never over the lanes
+  // v8: roadside bus-stop sign (right verge, angled to the runner) — never over the lanes
+  const SX = 8.6, SY = 3.3, SZ = 7, SR = -0.38, SW = 5.2;
+  const sign = signMesh(signTex('OJOTA', 'BUS STOP'), SW, 1.4); sign.position.set(SX, SY, SZ); sign.rotation.y = SR; g.add(sign);
+  const back = new THREE.Mesh(new THREE.BoxGeometry(SW + 0.2, 1.55, 0.12), toon('#0a6b3c')); back.position.set(SX - Math.sin(SR) * 0.08, SY, SZ - Math.cos(SR) * 0.08); back.rotation.y = SR; g.add(back);
+  const dx = Math.cos(SR) * (SW / 2 - 0.3), dz = -Math.sin(SR) * (SW / 2 - 0.3);
+  const posts = mergedMesh([P(G.box, '#9e9e9e', SX - dx, (SY - 0.7) / 2, SZ - dz - 0.12, 0, SR, 0, 0.12, SY - 0.7, 0.12), P(G.box, '#9e9e9e', SX + dx, (SY - 0.7) / 2, SZ + dz - 0.12, 0, SR, 0, 0.12, SY - 0.7, 0.12)], 0.03, false); g.add(posts);
   g.userData.sign = sign;
   return g;
 }

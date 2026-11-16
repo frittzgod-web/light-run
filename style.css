@@ -376,3 +376,12 @@ body[data-tier=low] .glass-card{background:var(--paper)}
 @media (max-height:700px){.btn.play{min-height:56px;font-size:22px}.tile{min-height:56px}.tile i{font-size:20px}#title{padding-top:calc(20px + env(safe-area-inset-top))}.t2{font-size:52px}}
 .card input.tog{width:52px;height:30px;padding:0;margin:0;font-size:0;border-radius:999px;border:2px solid var(--ink)}
 .setrow b{flex:1}
+
+/* v8: boss banner is a compact strip near the top so the road ahead stays clear */
+#bossCard{top:calc(186px + env(safe-area-inset-top));min-width:0;max-width:86vw;padding:6px 14px!important}
+#bossCard .bi{font-size:22px!important;display:inline-block;margin-right:6px;vertical-align:middle}
+#bossCard b{font-size:17px!important;display:inline!important;vertical-align:middle}
+#bossCard span{display:block;font-size:12px!important}
+#hInfo{max-width:calc(100vw - 150px);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+/* v8: in the camp the pause button is visible too — keep the score pill clear of it */
+body:has(#btnPause:not(.hidden)) #hud{right:calc(108px + env(safe-area-inset-right))}

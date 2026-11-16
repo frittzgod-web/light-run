@@ -672,7 +672,7 @@ function dstat(stat, v = 1, mode) { const done = M.dailyStat(stat, v, mode); for
 /* ---- zones + bosses ---- */
 function enterZone(i) {
   const z = C.ZONES[i]; R.zone = i; R.traffic = z.traffic || 1;
-  if (S.mode === 'run') { zoneCard(z.name, z.sub, `KM ${Math.round(z.km)}`); }
+  if (S.mode === 'run') { R.zoneMsg = { txt: `🗺️ ${z.name} · KM ${Math.round(z.km)}`, t: 2.6 }; hudT = 0; }   // v8: announced in the HUD pill, never over the road
   if (z.id === 'bridge') dstat('reachBridge', 1, 'max');
   if (z.id === 'mowe') dstat('reachMowe', 1, 'max');
 }
@@ -684,7 +684,7 @@ function bossStart(id) {
   const B = C.BOSSES[id]; R.boss = { id, crashes: 0, gustT: 3.5, boltT: 1.2, warn: null };
   clearTimeout($('#zoneCard')._t); $('#zoneCard').classList.remove('show');
   const el = $('#bossCard'); el.className = 'boss ' + id; el.innerHTML = `<div class="bi">${B.icon}</div><b>${esc(B.title)}</b><span>${esc(B.sub)}</span>`; void el.offsetWidth; el.classList.add('show');
-  clearTimeout(el._t); el._t = setTimeout(() => el.classList.remove('show'), 2600);
+  clearTimeout(el._t); el._t = setTimeout(() => el.classList.remove('show'), 1900);
   sfx.boss(); shakeDOM(); document.body.classList.add('boss-' + id);
 }
 function bossEnd(win) {
@@ -747,7 +747,7 @@ function updateRun(dt) {
   updateZoneFX(dt, km); updateBoss(dt);
   for (const v of oncoming) { v.position.z += move + 18 * dt; if (v.position.z > 30) { v.position.z = -300 - rand(0, 60); v.position.x = Math.random() < 0.5 ? -10.6 : -15.2; } v.visible = v.position.z > -(scene.fog.far + 8); }
   // critically damped spring toward the target lane: smooth, frame-rate independent, no snapping
-  { const w = 24, T = LANES[R.lane]; R.pv = (R.pv || 0) + (w * w * (T - R.px) - 2 * w * (R.pv || 0)) * dt; R.px += R.pv * dt; if (Math.abs(T - R.px) < 0.002 && Math.abs(R.pv) < 0.02) { R.px = T; R.pv = 0; } }
+  { const w = 30, T = LANES[R.lane]; R.pv = (R.pv || 0) + (w * w * (T - R.px) - 2 * w * (R.pv || 0)) * dt; R.px += R.pv * dt; if (Math.abs(T - R.px) < 0.002 && Math.abs(R.pv) < 0.02) { R.px = T; R.pv = 0; } }
   // vertical: jumps, ramps, roofs, rails
   const [gy, surfA] = groundAt(R.px);
   if (R.onGround) {
@@ -876,6 +876,7 @@ function updateRun(dt) {
   } else answerGate.visible = false;
   if (R.signFlash) { R.signFlash.t -= dt; const k = Math.max(0, R.signFlash.t) / 1.2, on = Math.floor(R.signFlash.t * 8) % 2 === 0; R.signFlash.mat.color.setRGB(1 + (on ? 0.9 : 0.2) * k, 1 + (on ? 0.9 : 0.2) * k, 1 + (on ? 0.1 : 0) * k); if (R.signFlash.t <= 0) { R.signFlash.mat.color.setRGB(1, 1, 1); R.signFlash = null; } }
   if (R.flash > 0) R.flash -= dt;
+  if (R.zoneMsg && R.zoneMsg.t > 0) R.zoneMsg.t -= dt;
   for (let k = 0; k < 2; k++) {
     const idx = R.stopIdx + k; const b = bridges[idx % 2];
     if (idx < C.STOPS.length - 1) { b.visible = stopDist(idx) - R.dist < 340; b.position.z = -(stopDist(idx) - R.dist) - 2; if (b.userData.idx !== idx) { setBridgeSign(b, C.STOPS[idx], C.STOP_REGION[idx] + ' · KM ' + C.STOP_KM[idx]); b.userData.idx = idx; } }
@@ -891,7 +892,7 @@ function updateRun(dt) {
   if (R.stormK > 0.01 || R.cloudTint) { R.cloudTint = R.stormK > 0.01; const c = 1 - R.stormK * 0.62; clouds.children.forEach(o => o.material.color.setRGB(c, c, c * 1.05)); }
   lanternLight.intensity = Math.max(prog, R.stormK) * 2.2 * S.lantern / 100;
   const sh = R.shake > 0 && !SET.reduceMotion ? R.shake * 0.6 : 0;
-  R.camX += (R.px - R.camX) * (1 - Math.exp(-8.5 * dt));   // camera X has its own lag
+  R.camX += (R.px - R.camX) * (1 - Math.exp(-11 * dt));   // camera X has its own lag
   R.camH = lerp(R.camH || 0, Math.max(0, R.py), Math.min(1, dt * 6));
   const camY = 3.3 + R.camH * 0.95 - (R.sl > 0 ? 0.35 : 0);
   camera.position.set(R.camX + rand(-sh, sh), camY + rand(-sh, sh), 7.6 + R.camH * 0.5 + Math.min(1.2, Math.max(0, R.speed - 30) * 0.03));
@@ -917,6 +918,7 @@ function updateRun(dt) {
 }
 function lanternHalo(start) {
   let hi = start;
+  halos.mat.depthTest = S.mode !== 'camp'; // v8: camp camera looks down, so the ground used to slice the lantern glow into a hard-edged square
   if (player && lantern) {
     lantern.getWorldPosition(_pv);
     halos.pos.set([_pv.x, _pv.y, _pv.z], hi * 3); halos.col.set([1, 0.8, 0.35], hi * 3); halos.size[hi] = 1.2 + S.lantern / 40; halos.alpha[hi] = 0.9; hi++;
@@ -939,8 +941,9 @@ function hud(prog, info) {
   if (S.mode === 'run') {
     const i = Math.min(R.stopIdx, C.STOPS.length - 1);
     const km = KM(R.dist);
-    setTxt(el$('hInfo'), R.flash > 0 ? `📍 ${C.STOPS[R.stopIdx - 1]} ✓ · ${Math.round(R.speed * 3.6)} km/h` : `KM ${km.toFixed(1)} · ${C.STOPS[i].replace(/ \(.*\)/, '')} ${Math.max(0, C.STOP_KM[i] - km).toFixed(1)} km · ${Math.round(R.speed * 3.6)} km/h`);
-    const fl = R.flash > 0; if (el$('hInfo')._fl !== fl) { el$('hInfo')._fl = fl; el$('hInfo').classList.toggle('flash', fl); }
+    const zm = R.zoneMsg && R.zoneMsg.t > 0 && !(R.flash > 0) ? R.zoneMsg.txt : null;
+    setTxt(el$('hInfo'), zm ? zm : R.flash > 0 ? `📍 ${C.STOPS[R.stopIdx - 1]} ✓ · ${Math.round(R.speed * 3.6)} km/h` : `➜ ${C.STOPS[i].replace(/ \(.*\)/, '')} ${Math.max(0, C.STOP_KM[i] - km).toFixed(1)} km · ${Math.round(R.speed * 3.6)} km/h` /* v8: shorter so it never truncates beside combo/power chips (the map strip shows total KM) */);
+    const fl = R.flash > 0 || !!zm; if (el$('hInfo')._fl !== fl) { el$('hInfo')._fl = fl; el$('hInfo').classList.toggle('flash', fl); }
     const pc = km / C.TOTAL_KM * 100; setL(el$('mapMe'), pc); setW(el$('mapFill'), pc);
   } else if (info) setTxt(el$('hInfo'), info);
   setW(el$('hProg'), prog * 100);
@@ -1102,7 +1105,7 @@ function revive(msg) {
   toast(msg, 2200); sfx.power();
 }
 function restartFrom(cp) {
-  hide('modal'); fadeFlash();
+  hide('modal'); fadeFlash(); hideGateUI();
   Object.assign(S, cp.S); S.lantern = Math.max(S.lantern, S.floor);
   if (R.boss) bossEnd(false);
   Object.assign(R, { dist: cp.dist, stopIdx: cp.stopIdx, vGot: cp.vGot, nextScrollD: cp.dist + 60, nextPowerD: cp.dist + 200, gate: null, t: 0, combo: 0, comboT: 0, fire: 0, magnet: 0, shield: false, stumble: 0, lastStumble: -99, dark: 0, inv: 1.5, nextRow: 30, lane: 1, px: 0, pv: 0, camX: 0, py: 0, vy: 0, onGround: true, sl: 0, burst: 0, grind: false, zone: -1, kmInt: Math.floor(KM(cp.dist)), startT: cp.dist ? R.startT : performance.now() });
@@ -1163,7 +1166,7 @@ function judgeGate(g) {
   document.querySelectorAll('#gLabels .gl').forEach((el, i) => el.classList.add(i === g.correctLane ? 'ok' : 'dim'));
   gateLanes.forEach(L => L.panel.visible = true);
   setTimeout(() => $('#gLabels').classList.add('hidden'), 450);
-  clearTimeout(g.tm); g.tm = setTimeout(() => { if (S.mode === 'run' && R && R.gate === g) hideGateUI(); }, 2400);
+  clearTimeout(g.tm); g.tm = setTimeout(() => { if (S.mode === 'run' && R && (R.gate === g || !R.gate || !R.gate.shown)) hideGateUI(); }, 2400); // v8: also clear if the gate was reset (restart) so the result card can't stick
 }
 function passStop(idx) {
   const b = bridges[idx % 2];
@@ -1518,8 +1521,8 @@ window.addEventListener('keydown', e => {
   if (S.paused || S.slowmo) return;
   if (S.mode === 'run' && !e.repeat && !LAT.t0) LAT.t0 = performance.now();
   if (S.mode === 'run') {
-    if (['ArrowLeft', 'a', 'A'].includes(e.key)) runMove(-1);
-    if (['ArrowRight', 'd', 'D'].includes(e.key)) runMove(1);
+    if (!e.repeat && ['ArrowLeft', 'a', 'A'].includes(e.key)) runMove(-1);
+    if (!e.repeat && ['ArrowRight', 'd', 'D'].includes(e.key)) runMove(1);
     if (['ArrowUp', 'w', 'W', ' '].includes(e.key)) { runJump(); e.preventDefault(); }
     if (['ArrowDown', 's', 'S'].includes(e.key)) { runSlide(); e.preventDefault(); }
   }
@@ -1537,6 +1540,7 @@ canvas.addEventListener('pointerdown', e => {
 }, PASSIVE);
 function swipeCheck(e) {
   if (!ptr || e.pointerId !== ptr.id || S.mode !== 'run' || S.paused || S.slowmo) return;
+  if (ptr.acted) return;   // v8: one gesture = exactly one action; a fresh touch is needed for the next lane
   const now = performance.now(), x = e.clientX, y = e.clientY, d = ptr.dir;
   // after a swipe, keep the origin at the furthest point reached so a turn-back fires at the normal threshold
   if (d === 'L' && x < ptr.x0) ptr.x0 = x; else if (d === 'R' && x > ptr.x0) ptr.x0 = x; else if (d === 'U' && y < ptr.y0) ptr.y0 = y; else if (d === 'D' && y > ptr.y0) ptr.y0 = y;
@@ -1546,8 +1550,6 @@ function swipeCheck(e) {
   let dir = null;
   if (ax > ay && (ax > SWIPE || (ax > 10 && Math.abs(vx) > 0.55))) dir = dx < 0 ? 'L' : 'R';
   else if (ay > ax && (ay > SWIPE || (ay > 10 && Math.abs(vy) > 0.55))) dir = dy < 0 ? 'U' : 'D';
-  // same direction again inside one gesture needs a long extra drag (one swipe = one lane, but chains are possible)
-  else if (d === 'L' && ptr.ax - x > SAME) dir = 'L'; else if (d === 'R' && x - ptr.ax > SAME) dir = 'R';
   if (!dir) return;
   if (dir === 'L') runMove(-1); else if (dir === 'R') runMove(1); else if (dir === 'U') runJump(); else runSlide();
   ptr.acted = true; ptr.dir = dir; ptr.x0 = ptr.ax = x; ptr.y0 = ptr.ay = y;
@@ -1738,8 +1740,10 @@ function dailyHTML() {
 }
 $('#btnDaily').addEventListener('click', () => {
   ensureAudio(); sfx.tap();
-  $('#modalBody').innerHTML = dailyHTML() + '<button class="btn primary" id="dClose">Let\'s run ▶</button>';
-  show('modal'); $('#modalBody').scrollTop = 0; $('#dClose').onclick = () => hide('modal');
+  $('#modalBody').innerHTML = dailyHTML() + '<button class="btn primary" id="dGo">Let\'s run ▶</button><button class="btn ghost" id="dClose">Close</button>';
+  show('modal'); $('#modalBody').scrollTop = 0; $('#dClose').onclick = () => { sfx.tap(); hide('modal'); };
+  // v8: "Let's run" used to only close the panel; now it actually starts/continues the run
+  $('#dGo').onclick = () => { hide('modal'); (save ? $('#btnContinue') : $('#btnNew')).click(); };
 });
 /* ---- shop ---- */
 let shopTab = 'outfits', shopFrom = 'title', shopSel = null;
@@ -2080,10 +2084,11 @@ window.LR = {
   get run() { return R ? { combo: R.combo, fire: R.fire, shield: R.shield, magnet: R.magnet, dark: R.dark, revived: R.revived, cp: R.cp && R.cp.name, speed: R.speed, vGot: R.vGot, parts: S.plan.verse.parts.length, quizRight: S.quizRight, quizTotal: S.quizTotal, moral: R.moralIdx } : null; },
   get encCount() { return K ? K.enc.length : 0; },
   pattern(k) { FORCE.pattern = k; if (R) R.nextRow = Math.min(R.nextRow, 1); },
-  km(k) { if (!R) return; if (R.boss) bossEnd(false); R.dist = k * UPK; R.stopIdx = STOP_D.findIndex(d => d > R.dist); R.gate = null; R.kmInt = Math.floor(k); R.nextScrollD = R.dist + 100; clearObs(); R.nextRow = 30; R.zone = -1; },
+  km(k) { if (!R) return; if (R.boss) bossEnd(false); hideGateUI(); R.dist = k * UPK; R.stopIdx = STOP_D.findIndex(d => d > R.dist); R.gate = null; R.kmInt = Math.floor(k); R.nextScrollD = R.dist + 100; clearObs(); R.nextRow = 30; R.zone = -1; },
   get j() { return R ? { km: KM(R.dist), zone: zoneAt(KM(R.dist)).id, boss: R.boss && R.boss.id, bossDone: Object.keys(R.bossDone), py: R.py, onGround: R.onGround, sl: R.sl, grind: R.grind, grindM: R.grindM, roofs: R.roofs, slides: R.slides, speed: R.speed, lane: R.lane, burst: R.burst } : null; },
   get meta() { return { wallet: M.wallet(), daily: M.dailyState(), list: M.dailyFor().map(c => c.id), streak: M.streak(), best: M.bestKm(), room: M.myRoom() }; },
   give(n) { M.earn(n); },
+  debugPx() { return R ? R.px : null; },
   look(l, rot) { if (S.mode !== 'select') return false; selLook = LK.fixLook({ ...selLook, ...l }); selG = selLook.gender; if (rot != null) selRot = rot; selIdle = -999; paintSelect(); return true; },
   face(e) { if (player) setExpression(player, e, 3); },
   dbg() { // draw-call breakdown of visible meshes (debug)
