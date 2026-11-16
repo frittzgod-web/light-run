@@ -284,6 +284,9 @@ function sharkGeo() { return merge([P(G.sphLo, '#8fa3b5', 0, 0, 0, 0, 0, 0, 1.1,
 function seaweedGeo() { const p = []; for (let i = 0; i < 4; i++) p.push(P(G.cone, '#ffffff', rnd(-0.3, 0.3), 1.6, rnd(-0.3, 0.3), rnd(-0.2, 0.2), 0, rnd(-0.2, 0.2), 0.3, rnd(2.4, 3.6), 0.12)); return merge(p); }
 function coralGeo() { const p = [P(G.ico, '#ffffff', 0, 0.3, 0, 0, 0, 0, 1.2, 0.6, 1.0)]; for (let i = 0; i < 6; i++) p.push(P(G.cyl6, '#ffffff', rnd(-0.5, 0.5), 0.9, rnd(-0.4, 0.4), rnd(-0.5, 0.5), 0, rnd(-0.5, 0.5), 0.18, rnd(0.8, 1.4), 0.18)); return merge(p); }
 function sunkCart() { const g = new THREE.Group(); const w = chariotWreck(); w.scale.setScalar(1.6); w.rotation.set(0.3, 0.6, 0.5); g.add(w); return g; }
+// v12: shared sky reflection map from main.js (High tier)
+let ENVMAP = null;
+export function setEnv(e) { ENVMAP = e; }
 function buildExodus(tier) {
   const g = new THREE.Group(), D = new Decor(g), lo = tier === 'low' ? 0.5 : tier === 'med' ? 0.75 : 1;
   const pt = getTex('seabed'); const pt2 = pt.clone(); pt.repeat.set(1, 41); D.scrollTex(pt, 1 / 8);
@@ -295,6 +298,7 @@ function buildExodus(tier) {
   for (const s of [-1, 1]) {
     const w = new THREE.Mesh(new THREE.BoxGeometry(16, 24, 350), wallMat); w.position.set(s * (7.0 + 8), 12, -150); w.renderOrder = 2; g.add(w); walls.push(w);
     const sheen = new THREE.Mesh(new THREE.PlaneGeometry(350, 24), new THREE.MeshBasicMaterial({ map: wt, transparent: true, opacity: 0.25, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide }));
+    if (tier === 'high' && ENVMAP) { sheen.material = new THREE.MeshStandardMaterial({ color: '#7fd6ee', roughness: 0.06, metalness: 0.1, envMap: ENVMAP, envMapIntensity: 1.6, transparent: true, opacity: 0.42, depthWrite: false, side: THREE.DoubleSide }); }   // v12: glassy, reflective sea walls
     sheen.rotation.y = s * -Math.PI / 2; sheen.position.set(s * 6.95, 12, -150); sheen.renderOrder = 3; g.add(sheen);
   }
   const ft = getTex('foam'); ft.repeat.set(30, 1);

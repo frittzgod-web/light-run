@@ -522,3 +522,67 @@ body.qon #hBoss{display:none}
 body:not(.inrun) #toast{top:auto;bottom:calc(22px + env(safe-area-inset-bottom));max-width:90vw;pointer-events:none}
 #bible .bmhead{gap:8px}#bible .bmhead h2{white-space:nowrap;font-size:clamp(20px,6.4vw,26px);min-width:0;overflow:hidden;text-overflow:ellipsis}
 #bible .bmhead h2{font-size:21px!important}
+/* ===== v12 · progression, rewards hub, chests, cards, badges, fever ===== */
+.progbar{display:flex;align-items:center;gap:8px;width:100%;min-height:44px;margin:2px 0 8px;padding:6px 10px;border:2px solid var(--ink);border-radius:14px;background:linear-gradient(180deg,#2b2140,#1a1430);color:#fff;font:inherit;cursor:pointer;box-shadow:0 3px 0 var(--ink)}
+.progbar .pl{font-weight:900;font-size:13px;white-space:nowrap}.progbar .pl b{font-size:18px;color:var(--gold)}
+.progbar .pr{font-weight:800;font-size:12.5px;white-space:nowrap;opacity:.95}
+.progbar .pbar{flex:1;margin:0;height:10px;background:rgba(255,255,255,.18)}
+.progbar .pc{font-weight:900;font-size:13px;background:var(--gold);color:var(--ink);border:2px solid var(--ink);border-radius:999px;padding:0 7px;animation:chestPulse 1.2s ease-in-out infinite}
+@keyframes chestPulse{50%{transform:scale(1.12)}}
+.pbar{position:relative;height:9px;background:#e6e1d6;border-radius:6px;overflow:hidden;margin:5px 0 2px}
+.pbar i{display:block;height:100%;border-radius:6px;background:linear-gradient(90deg,#7ee8a5,#18a957);transition:width .6s cubic-bezier(.2,.9,.3,1.2)}
+.pbar.xp i{background:linear-gradient(90deg,#8fd3ff,#6a5cff,#c86bff)}.pbar.gold i{background:linear-gradient(90deg,#ffe066,#ff8f00)}
+.hubtabs{display:flex;gap:4px;overflow-x:auto;margin:4px 0 8px;scrollbar-width:none}.hubtabs::-webkit-scrollbar{display:none}
+.hubtabs button{flex:0 0 auto;min-height:44px;padding:0 10px;font-weight:900;font-size:13px;border:2px solid var(--ink);border-radius:12px;background:#fff;color:var(--ink)}
+.hubtabs button.on{background:var(--gold)}
+.cal{display:grid;grid-template-columns:repeat(7,1fr);gap:4px;margin:4px 0}
+.cal .cd{border:2px solid var(--ink);border-radius:10px;background:#fff;text-align:center;padding:3px 0 4px;font-size:11px;line-height:1.15}
+.cal .cd small{display:block;font-size:9.5px;font-weight:800;opacity:.7}.cal .cd i{display:block;font-style:normal;font-size:17px}.cal .cd b{font-size:11px}
+.cal .cd.got{background:#ffe08a}.cal .cd.today{outline:3px solid #ff6d00;outline-offset:1px;animation:chestPulse 1.4s ease-in-out infinite}
+.dch.weekly{background:#fff4d6}
+.lvrow{display:flex;gap:10px;align-items:center;margin:4px 0 6px}
+.lvb{flex:0 0 58px;height:58px;border:3px solid var(--ink);border-radius:50%;background:radial-gradient(circle at 35% 30%,#b9a4ff,#5b3fd6);color:#fff;display:flex;flex-direction:column;align-items:center;justify-content:center;box-shadow:0 3px 0 var(--ink)}
+.lvb b{font-size:22px;line-height:1}.lvb small{font-size:8.5px;font-weight:900;letter-spacing:.06em}
+.lvi{flex:1}.lvt{font-weight:900}.lvt span{font-weight:700;font-size:12px;opacity:.7}
+.ranks{display:flex;flex-wrap:wrap;gap:4px}.ranks span{border:2px solid #bbb;border-radius:10px;padding:3px 7px;font-size:12px;font-weight:800;color:#888;background:#f5f5f5}.ranks span small{display:block;font-size:9.5px}
+.ranks span.on{border-color:var(--ink);color:var(--ink);background:#e8e0ff}
+.chestbox{text-align:center}.chest{font-size:84px;line-height:1.1;display:inline-block;filter:grayscale(.7) drop-shadow(0 6px 0 rgba(0,0,0,.25));margin:4px 0}
+.chest.ready{filter:drop-shadow(0 0 18px rgba(255,210,63,.9)) drop-shadow(0 6px 0 rgba(0,0,0,.25));animation:chestPulse 1.3s ease-in-out infinite}
+.chest.shake{animation:chestShake .9s ease-in-out}.chest.pop{animation:chestPop .5s cubic-bezier(.2,1.6,.4,1)}
+@keyframes chestShake{0%,100%{transform:rotate(0)}15%{transform:rotate(-12deg) scale(1.05)}30%{transform:rotate(12deg) scale(1.1)}45%{transform:rotate(-14deg) scale(1.15)}60%{transform:rotate(14deg) scale(1.2)}80%{transform:rotate(-6deg) scale(1.25)}}
+@keyframes chestPop{0%{transform:scale(1.4)}100%{transform:scale(1)}}
+.reveal{margin:6px 0;animation:revealIn .5s ease-out}.reveal p{margin:6px 0}
+@keyframes revealIn{from{opacity:0;transform:translateY(16px) scale(.9)}to{opacity:1;transform:none}}
+.cards{display:grid;grid-template-columns:repeat(3,1fr);gap:6px}
+.card3{position:relative;border:3px solid var(--ink);border-radius:12px;padding:6px 4px 5px;text-align:center;background:linear-gradient(160deg,#fffdf3,#efe6cc);box-shadow:0 3px 0 var(--ink);min-height:92px}
+.card3 i{display:block;font-style:normal;font-size:30px;line-height:1.2}.card3 b{display:block;font-size:12px;line-height:1.15}.card3 small{display:block;font-size:10px;opacity:.75}
+.card3 em{position:absolute;top:-8px;right:-6px;font-style:normal;font-weight:900;font-size:11px;background:var(--gold);border:2px solid var(--ink);border-radius:999px;padding:0 5px}
+.card3.r{background:linear-gradient(160deg,#e9f4ff,#9fd0ff)}.card3.e{background:linear-gradient(160deg,#fff1ff,#d6a6ff);box-shadow:0 3px 0 var(--ink),0 0 14px rgba(200,107,255,.7)}
+.card3.locked{filter:grayscale(1);opacity:.55}
+.reveal .card3{display:inline-block;width:132px;min-height:150px;padding-top:14px}.reveal .card3 i{font-size:54px}.reveal .card3 b{font-size:15px}
+.card3.flip{animation:cardFlip .7s cubic-bezier(.2,.9,.3,1.2)}@keyframes cardFlip{0%{transform:perspective(400px) rotateY(90deg) scale(.6)}100%{transform:perspective(400px) rotateY(0) scale(1)}}
+.badges{display:grid;grid-template-columns:repeat(2,1fr);gap:6px}
+.badge{border:2px solid #c9c2b0;border-radius:12px;padding:6px 8px;background:#f6f4ee;color:#8a8478}.badge i{font-style:normal;font-size:22px;float:left;margin-right:6px}.badge b{display:block;font-size:12.5px}.badge small{font-size:10.5px}
+.badge.got{border-color:var(--ink);background:#fff7d6;color:var(--ink)}
+.runprog{border:2px solid var(--ink);border-radius:12px;background:#f4f0ff;padding:7px 10px;margin:8px 0;text-align:left}
+.runprog .rpx{font-weight:900;color:#4a2fc0}.runprog .rpl{font-weight:800;font-size:12.5px;margin-top:2px}.runprog .rpm{font-size:12px;font-weight:700;margin-top:4px}.runprog .rpm span{display:block}
+.celebrate{position:fixed;left:50%;top:22%;z-index:80;transform:translate(-50%,-20px) scale(.7);opacity:0;pointer-events:none;min-width:220px;max-width:88vw;text-align:center;padding:12px 18px;border:3px solid var(--ink);border-radius:18px;background:linear-gradient(180deg,#3b2a78,#1d1440);color:#fff;box-shadow:0 6px 0 var(--ink),0 0 30px rgba(170,140,255,.8);transition:transform .35s cubic-bezier(.2,1.6,.4,1),opacity .25s}
+.celebrate.show{opacity:1;transform:translate(-50%,0) scale(1)}
+.celebrate i{display:block;font-style:normal;font-size:38px;line-height:1.1}.celebrate b{display:block;font-size:22px;color:var(--gold);letter-spacing:.03em}.celebrate span{font-size:13px;font-weight:700}
+.celebrate.badge{background:linear-gradient(180deg,#7a4b00,#3d2500);box-shadow:0 6px 0 var(--ink),0 0 30px rgba(255,200,60,.8)}
+body.qon .celebrate{top:auto;bottom:16%}
+/* FEVER: golden vignette + pulsing combo chip (kept off the question bar) */
+body.fever::after{content:'';position:fixed;inset:0;pointer-events:none;z-index:5;box-shadow:inset 0 0 90px 30px rgba(255,170,30,.55);animation:feverPulse .6s ease-in-out infinite alternate}
+body.fever.qon::after{box-shadow:inset 0 0 50px 14px rgba(255,170,30,.35)}
+@keyframes feverPulse{from{opacity:.65}to{opacity:1}}
+body.fever #hCombo{background:linear-gradient(90deg,#ff3d00,#ffb300);color:#fff;animation:chestPulse .5s ease-in-out infinite}
+.popt.fever{font-size:28px;color:#ff9800}
+@media (max-width:370px){.progbar .pr{display:none}.cards{gap:4px}.card3 b{font-size:11px}}
+/* in a run, celebrations are a slim strip low on the screen so the road and questions stay clear */
+body.inrun .celebrate{top:auto;bottom:calc(84px + env(safe-area-inset-bottom));min-width:0;padding:6px 12px;border-radius:14px;display:flex;align-items:center;gap:8px;text-align:left}
+body.inrun .celebrate i{font-size:24px}body.inrun .celebrate b{font-size:15px}body.inrun .celebrate span{font-size:11.5px;display:block}
+body.inrun .celebrate.show{transform:translate(-50%,0) scale(1)}
+.hubtabs button{flex:1 1 auto;padding:0 7px;font-size:12.5px}
+/* v13.1: celebrations never cover result-screen buttons: when a panel is open they sit in a slim strip at the very top */
+body #modal.show ~ .celebrate{z-index:300;max-width:70vw;top:calc(6px + env(safe-area-inset-top));bottom:auto;min-width:0;padding:5px 12px;border-radius:14px;display:flex;align-items:center;gap:8px;text-align:left}
+body #modal.show ~ .celebrate i{font-size:22px}body #modal.show ~ .celebrate b{font-size:14px}body #modal.show ~ .celebrate span{font-size:11px;display:block}

@@ -6,6 +6,8 @@ import { THREE, toon, VC, outline, P, G, merge, mergedMesh, canvasTex, signTex, 
 import { danfo, truck, okada, cones, pothole, hawker, palmGeo, treeGeo, building, billboard, stall, streetLightGeo, bridge, setBridgeSign, gateArch, lanternMesh, textSprite, rampMesh, okadaRamp, railMesh, barMesh, lowSign, beamMesh, cow, herder, flyover, roadProp } from './props.js';
 import { MODELS, setVehTier } from './models.js';
 import * as M from './meta.js';
+import * as PG from './progress.js';
+import { createPost, GRADES } from './post.js';
 import * as C from './content.js';
 import * as BK from './books.js';
 import * as VW from './worlds.js';
@@ -55,7 +57,7 @@ const pickTier = () => LITE ? 'low' : params.get('gfx') ? ({ high: 'high', balan
 let TIER = pickTier(), Q = QUALITY[TIER]; setCharTier(TIER); setVehTier(TIER);
 let PR = Q.prMax;
 renderer.setPixelRatio(PR);
-renderer.outputColorSpace = THREE.SRGBColorSpace;
+renderer.outputColorSpace = THREE.SRGBColorSpace; renderer.info.autoReset = false;   // v12: counted per frame (post passes included)
 renderer.toneMapping = THREE.NeutralToneMapping; renderer.toneMappingExposure = 1.08;   // gentle filmic grade that keeps cartoon colours
 renderer.shadowMap.enabled = Q.shadows; renderer.shadowMap.type = THREE.PCFShadowMap;
 const scene = new THREE.Scene();
@@ -283,11 +285,38 @@ const roadTex = canvasTex(512, 512, (x, w, h) => {
   for (const lx of [-1.6, 1.6]) { const cx = (lx + 6) / 12 * w; x.fillStyle = '#f4f4ee'; x.fillRect(cx - 6, 0, 12, h * 0.5); x.fillStyle = 'rgba(80,86,98,.55)'; for (let k = 0; k < 40; k++) x.fillRect(cx - 6 + Math.random() * 12, Math.random() * h * 0.5, 2 + Math.random() * 3, 2 + Math.random() * 4); }
 }, true);
 roadTex.repeat.set(1, 40);
+// v12 High tier: physically based asphalt (normal map for grain + cracks, rough with a faint sky reflection)
+const ROAD_TOON = toon('#ffffff', { map: roadTex }), ROADS = [];
+let roadNrm = null, ROAD_PBR = null, ENV = null;
+function heightNormalTex(n, rep, gen, strength = 2.2) {
+  const hgt = new Float32Array(n * n); gen(hgt, n);
+  const c = document.createElement('canvas'); c.width = c.height = n; const x = c.getContext('2d'), img = x.createImageData(n, n);
+  for (let j = 0; j < n; j++) for (let i = 0; i < n; i++) {
+    const hL = hgt[j * n + (i - 1 + n) % n], hR = hgt[j * n + (i + 1) % n], hD = hgt[((j - 1 + n) % n) * n + i], hU = hgt[((j + 1) % n) * n + i];
+    let nx = (hL - hR) * strength, ny = (hD - hU) * strength, nz = 1; const l = Math.hypot(nx, ny, nz); nx /= l; ny /= l; nz /= l;
+    const o = (j * n + i) * 4; img.data[o] = (nx * 0.5 + 0.5) * 255; img.data[o + 1] = (ny * 0.5 + 0.5) * 255; img.data[o + 2] = (nz * 0.5 + 0.5) * 255; img.data[o + 3] = 255;
+  }
+  x.putImageData(img, 0, 0); const t = new THREE.CanvasTexture(c); t.wrapS = t.wrapT = THREE.RepeatWrapping; t.repeat.set(rep[0], rep[1]); t.colorSpace = THREE.NoColorSpace; t.anisotropy = 4; return t;
+}
+function asphaltHeight(h, n) {
+  for (let k = 0; k < n * n; k++) h[k] = Math.random() * 0.35;                       // aggregate grain
+  for (let s = 0; s < 260; s++) { const cx = Math.random() * n, cy = Math.random() * n, r = 1 + Math.random() * 2.5; for (let j = -3; j <= 3; j++) for (let i = -3; i <= 3; i++) { const d = Math.hypot(i, j); if (d < r) h[(((cy + j) | 0) + n) % n * n + (((cx + i) | 0) + n) % n] += 0.6 * (1 - d / r); } }   // stones
+  for (let c = 0; c < 5; c++) { let x = Math.random() * n, y = Math.random() * n; for (let k = 0; k < 90; k++) { x += (Math.random() - 0.5) * 2.4; y += 1; h[((y | 0) % n) * n + ((x | 0) + n) % n] -= 1.4; } }   // hairline cracks
+}
+function getEnv() {
+  if (ENV) return ENV;
+  try { const pm = new THREE.PMREMGenerator(renderer), es = new THREE.Scene(), m = skyMat.clone(); m.side = THREE.BackSide; es.add(new THREE.Mesh(new THREE.SphereGeometry(10, 24, 12), m)); ENV = pm.fromScene(es, 0.02).texture; pm.dispose(); } catch (e) { ENV = null; }
+  return ENV;
+}
+function setRoadPBR(on) {
+  if (on && !ROAD_PBR) { roadNrm = heightNormalTex(256, [3, 120], asphaltHeight); ROAD_PBR = new THREE.MeshStandardMaterial({ map: roadTex, normalMap: roadNrm, normalScale: new THREE.Vector2(0.9, 0.9), roughness: 0.86, metalness: 0, envMap: getEnv(), envMapIntensity: 0.55 }); VW.setEnv && VW.setEnv(getEnv()); }
+  for (const r of ROADS) r.material = on ? ROAD_PBR : ROAD_TOON;
+}
 const grassTex = canvasTex(128, 128, (x, w, h) => { x.fillStyle = '#69c13f'; x.fillRect(0, 0, w, h); for (let i = 0; i < 160; i++) { x.fillStyle = pick(['#7fd34c', '#5aaa36', '#8fdc5a', '#c9a05a']); x.fillRect(Math.random() * w, Math.random() * h, 3, 5); } }, true);
 grassTex.repeat.set(60, 60);
 {
-  const road = new THREE.Mesh(new THREE.PlaneGeometry(12, 320), toon('#ffffff', { map: roadTex })); road.rotation.x = -Math.PI / 2; road.position.set(0, 0.01, -140); road.receiveShadow = true; RW.add(road);
-  const road2 = road.clone(); road2.position.x = -13; RW.add(road2);
+  const road = new THREE.Mesh(new THREE.PlaneGeometry(12, 320), ROAD_TOON); road.rotation.x = -Math.PI / 2; road.position.set(0, 0.01, -140); road.receiveShadow = true; RW.add(road);
+  const road2 = road.clone(); road2.position.x = -13; RW.add(road2); ROADS.push(road, road2);
   const ground = new THREE.Mesh(new THREE.PlaneGeometry(600, 600), groundMat = toon('#ffffff', { map: grassTex })); ground.rotation.x = -Math.PI / 2; ground.position.set(0, -0.02, -150); ground.receiveShadow = true; RW.add(ground);
   RW.add(mergedMesh([P(G.box, '#eceff1', -6.5, 0.45, -140, 0, 0, 0, 0.7, 0.9, 320), P(G.box, '#ffd23f', -6.5, 0.93, -140, 0, 0, 0, 0.74, 0.08, 320)], 0.04, false));
 }
@@ -511,7 +540,7 @@ function moveProps(move) {
   const fogCut = -(scene.fog.far + 6);   // anything past the fog wall is invisible anyway: skip its draw calls
   for (const r of roadside) { const o = r.obj; o.position.z += move; if (o.position.z > 30) o.position.z -= r.span; o.visible = o.position.z > fogCut && SIDE_RULE[r.kind](zoneAt(KM(d0 - o.position.z))); }
   for (const h of walkers) { h.root.position.z += move * 1.05; if (h.root.position.z > 25) h.root.position.z -= 300; h.root.visible = h.root.position.z > fogCut && !zoneAt(KM(d0 - h.root.position.z)).water; }
-  roadTex.offset.y += move / 8; grassTex.offset.y += move / 10; kerbTex.offset.y += move * 110 / 320;
+  roadTex.offset.y += move / 8; if (roadNrm) roadNrm.offset.y += move * 3 / 8; grassTex.offset.y += move / 10; kerbTex.offset.y += move * 110 / 320;
   lagoon.position.z = -((BR0 + BR1) / 2 - d0); lagoon.visible = d0 + 330 > BR0 && d0 - 40 < BR1; if (lagoon.visible) waterTex.offset.x = S.t * 0.02;
   flyovers.forEach((f, i) => { const z = -(FLY_D[i] - d0); f.position.z = z; f.visible = z > -330 && z < 40; });
 }
@@ -532,7 +561,8 @@ function startRun(opt = {}) {
   hideScrolls(); answerGate.visible = false; hideGateUI();
   R.cp0 = R.cp = snapCP(0, 0, 'Lagos (the start)');
   hudMode('run'); verseHUD(); powerHUD(); buildMap();
-  const st = M.markPlayed(); if (st) setTimeout(() => toast(`🔥 Day ${st.n} streak! +${st.reward} 💡 light`, 2400), 3600);
+  const st = M.markPlayed(); if (st) { PG.streakChest(st.n); setTimeout(() => toast(`🔥 Day ${st.n} streak! +${st.reward} 💡 light${st.n % 7 === 0 ? ' + 🎁 chest' : ''}`, 2400), 3600); }
+  R.fever = 0; document.body.classList.remove('fever'); PG.runBegin(); if (!opt.vision) PG.track('runs', 1);
   if (opt.vision) {} else if (needTutorial()) startTutorial(); else toast('Swipe ⬅️ ➡️ lanes · ⬆️ jump · ⬇️ slide · Run Lagos → KM 46!', 3400);
 }
 const START_SPEED = 22, MAX_SPEED = 72, JUMP_H = 2.4;   // v9: a touch quicker off the line (was 20)
@@ -698,7 +728,7 @@ function endGrind() {
   if (!R.grind) return; R.grind = false;
   const m = Math.round(R.grindRun); if (m >= 3) { const p = Math.round(m * 1.5) * comboMult(); S.score += p; addCombo(3); popText(`⚙️ Grind ${m} m +${p}`, 'big'); scorePop(); dstat('grindM', m); }
 }
-function dstat(stat, v = 1, mode) { const done = M.dailyStat(stat, v, mode); for (const c of done) { setTimeout(() => { popText(`📅 ${c.t} ✓ +${c.r} 💡`, 'big'); sfx.good(); }, 300); } }
+function dstat(stat, v = 1, mode) { PG.track(stat, v, mode); const done = M.dailyStat(stat, v, mode); for (const c of done) { setTimeout(() => { popText(`📅 ${c.t} ✓ +${c.r} 💡`, 'big'); sfx.good(); }, 300); } }
 /* ---- zones + bosses ---- */
 function enterZone(i) {
   const z = C.ZONES[i]; R.zone = i; R.traffic = z.traffic || 1;
@@ -725,7 +755,7 @@ function bossEnd(win) {
   R.bossDone[b.id] = true;
   const pts = b.crashes ? Math.round(B.reward / 2) : B.reward;
   S.score += pts; addLantern(10); R.earn += Math.round(pts / 5); sfx.good(); scorePop();
-  if (b.id === 'storm') dstat('storm', 1, 'max'); if (b.id === 'goslow') dstat('goslow', 1, 'max');
+  if (b.id === 'storm') dstat('storm', 1, 'max'); if (b.id === 'goslow') dstat('goslow', 1, 'max'); if (b.id === 'market') PG.track('market', 1);
   const el = $('#bossCard'); el.className = 'boss win'; el.innerHTML = `<b>${esc(B.winTitle)} +${pts}</b><span>“${esc(B.win[0])}”</span><small>${esc(B.win[1])} (KJV)</small>`; void el.offsetWidth; el.classList.add('show');
   clearTimeout(el._t); el._t = setTimeout(() => el.classList.remove('show'), 3400);
   for (let k = 0; k < 40; k++) fx.emit(R.px + rand(-3, 3), rand(0.5, 4), rand(-4, 0), rand(-3, 3), rand(1, 5), rand(-2, 2), 1.0, 0.6, pick(['#fff3a0', '#ffd23f', '#ffffff']), 0.5);
@@ -1018,6 +1048,7 @@ function showVisionResult(r) {
     <div class="chips"><span class="chip">✨ ${r.pts} light</span><span class="chip">📖 ${r.right}/${r.total} questions</span><span class="chip">🪙 ${r.orbs} collected</span></div>
     ${r.verseDone ? `<div class="vmem"><div class="vt">📜 VERSE SAVED TO MY VERSES</div><div class="vx">“${esc(r.verse.text)}”</div><b>${esc(r.verse.ref)} (KJV)</b></div>` : `<p class="small">📜 Collect every scroll to save <b>${esc(r.verse.ref)}</b> to My Verses.</p>`}
     ${r.unlocked ? `<p class="unl">🔓 <b>${esc(r.unlocked)}</b> is now open on the Bible map!</p>` : ''}
+    ${progressHTML()}
     <p class="small">★ finish · ★★ two questions right · ★★★ all three right and the whole verse</p>
     <button class="btn primary" id="vrAgain">🔁 Play ${esc(WD.name)} again</button>
     <button class="btn" id="vrMap">📖 Bible map</button>
@@ -1053,6 +1084,7 @@ function showFallenVision(cause) {
     ${verseHTML(v)}
     <div class="reach"><div class="rk">${esc(V.WD.name)}: <b>${Math.round(V.d / V.len * 100)}%</b> of the vision</div><div class="rbar"><i style="width:${(V.d / V.len * 100).toFixed(1)}%"></i></div></div>
     <div class="chips"><span class="chip">✨ ${S.score} light</span><span class="chip">📖 ${V.right}/${V.total} questions</span><span class="chip">📜 ${V.vGot}/${V.verse.parts.length} scrolls</span></div>
+    ${progressHTML()}
     ${!R.revived ? `<p class="small" style="margin:4px 0">You can <b>rise again</b> once:</p>
       <button class="btn green" id="riseQ">🙏 Rise again · answer a ${esc(V.WD.name)} question</button>
       <button class="btn primary" id="riseL" ${S.score < cost ? 'disabled' : ''}>✨ Rise again · spend ${cost} light${S.score < cost ? ' (not enough yet)' : ''}</button>` : '<p class="small">You have already risen once this run.</p>'}
@@ -1197,6 +1229,7 @@ function updateRun(dt) {
     if (a.cross) { a.obj.position.x += a.vx * dt; if (Math.abs(a.obj.position.x) > 4.0) { a.vx *= -1; a.obj.position.x = clamp(a.obj.position.x, -4, 4); } a.lane = clamp(Math.round(a.obj.position.x / 3.2) + 1, 0, 2); a.obj.rotation.y = a.vx > 0 ? Math.PI / 2 : -Math.PI / 2; poseHuman(a.obj.userData.human, 'carry', dt, 1.2); }
     else if (a.type === 'hawker') poseHuman(a.obj.userData.human, 'carry', dt, 0.6);
     if (a.drop && a.obj.position.z > -60) { const b = a.obj.userData.bar; if (b.position.y > 1.55) { a.dropV += 30 * dt; b.position.y = Math.max(1.55, b.position.y - a.dropV * dt); if (b.position.y === 1.55) { a.drop = false; if (Math.abs(a.obj.position.z) < 60) { sfx.hit(); for (let k = 0; k < 8; k++) fx.emit(a.obj.position.x + rand(-1, 1), 1.5, a.obj.position.z, rand(-2, 2), rand(1, 3), 0, 0.5, 0.5, '#cfd8dc', 1); } } } }
+    if (TIER === 'high' && !V && a.rel < 1 && a.obj.userData.len && Math.abs(a.obj.position.z) < 70 && Math.random() < 0.3) { const L = a.obj.userData.len * 0.42; fx.emit(a.obj.position.x + rand(-0.7, 0.7), 0.12, a.obj.position.z + L, rand(-0.6, 0.6), rand(0.2, 0.7), rand(1, 2.5), 0.8, 0.7, '#c9b393', 2.6); }   // v12 High: tyre dust kicked up behind traffic
     if (a.obj.userData.exhaust && (a.ex -= dt) <= 0) { a.ex = 0.07; const e = a.obj.userData.exhaust; fx.emit(a.obj.position.x + e[0], e[1], a.obj.position.z + e[2], rand(-0.3, 0.3), rand(0.6, 1.2), 1.5, 0.9, 0.55, '#8d8d8d', 2.5); }
     if (a.fallY > 0) { a.fallY = Math.max(0, a.fallY - 26 * dt); a.obj.position.y = a.fallY; if (a.blob) a.blob.position.y = 0.03 - a.fallY; if (!a.fallY) { R.shake = Math.max(R.shake, 0.3); sfx.hit(); for (let k = 0; k < 14; k++) fx.emit(a.obj.position.x + rand(-1, 1), 0.3, a.obj.position.z + rand(-1, 1), rand(-3, 3), rand(0.5, 2.5), rand(-2, 2), 0.9, 0.9, '#d8b585', 2.4); } }
     if (a.fly) { a.obj.position.y += a.fly * dt; a.fly -= 22 * dt; a.obj.rotation.x += dt * 7; a.obj.position.x += a.fx * dt; if (a.obj.position.y < -3) a.obj.position.z = 99; }
@@ -1372,7 +1405,7 @@ function settleRunner() {
   // lift the view so the runner sits above the dialog sheet while paused
   camera.position.set(R.camX, 3.0, 7.6); camera.lookAt(R.camX, -1.9, -9);
 }
-const comboMult = () => 1 + Math.min(4, Math.floor(R.combo / 8));
+const comboMult = () => (1 + Math.min(4, Math.floor(R.combo / 8))) * (R.fever > 0 ? 2 : 1);   // v12: Fever doubles everything
 const COMBO_MILES = [[10, 'Faithful!'], [25, 'Steadfast!'], [50, 'More than a conqueror!'], [100, 'Hallelujah!'], [200, 'Unstoppable grace!']];
 function comboMilestone(m, word, mult) {   // v9: celebrate combo milestones (bonus, burst, FOV kick, haptic)
   const bonus = m * 5; S.score += bonus; addLantern(2); R.kick = SET.reduceMotion ? 0 : 7; buzz([10, 40, 18]); sfx.power(); scorePop();
@@ -1380,16 +1413,30 @@ function comboMilestone(m, word, mult) {   // v9: celebrate combo milestones (bo
   for (let k = 0; k < 30; k++) fx.emit(R.px, 1.4, 0, rand(-5, 5), rand(1, 6), rand(-4, 2), 0.8, 0.55, pick(['#ffd23f', '#fff3a0', '#ff8a3d']), 0.6);
   const el = $('#hCombo'); el.classList.remove('mile'); void el.offsetWidth; el.classList.add('mile');
 }
+// v12: FEVER MODE: every 30 combo lights you up for 8 s: x2 score, light magnet, golden screen, music sting + haptics
+const FEVER_EVERY = 30, FEVER_T = 8;
+function startFever() {
+  R.fever = FEVER_T; R.magnet = Math.max(R.magnet, FEVER_T); document.body.classList.add('fever'); powerHUD();
+  popText('🔥 FEVER! ×2 everything', 'big fever'); sfx.power(); setTimeout(() => sfx.good(), 160); buzz([30, 40, 30, 40, 60]); shakeDOM(); dstat('fever', 1);
+  for (let k = 0; k < 50; k++) fx.emit(R.px + rand(-2, 2), rand(0.3, 3), rand(-3, 1), rand(-4, 4), rand(2, 7), rand(-3, 2), 1.0, 0.7, pick(['#ffd23f', '#ff8a3d', '#fff3a0']), 0.5);
+}
+function feverTick(dt) {
+  if (!(R.fever > 0)) return; R.fever -= dt;
+  if (Math.random() < 0.5) fx.emit(R.px + rand(-0.5, 0.5), R.py + rand(0.3, 1.6), 0.3, rand(-1, 1), rand(0.5, 2), 1, 0.6, 0.35, pick(['#ffd23f', '#ff8a3d']), 0.3);
+  if (R.fever <= 0) { R.fever = 0; document.body.classList.remove('fever'); popText('Fever over · keep the combo going!', 'dim'); }
+}
 function addCombo(n) {
   const before = comboMult(), c0 = R.combo; R.combo += n; R.comboT = 2.8;
+  if (Math.floor(R.combo / FEVER_EVERY) > Math.floor(c0 / FEVER_EVERY) && !(R.fever > 0)) startFever();
+  if (Math.floor(R.combo / 10) > Math.floor(c0 / 10)) PG.track('combo', R.combo, 'max');
   let mile = false; for (const [m, w] of COMBO_MILES) if (c0 < m && R.combo >= m) { comboMilestone(m, w, comboMult() > before ? comboMult() : 0); mile = true; }
   if (comboMult() > before && mile) { sfx.stop(); if (comboMult() >= 4) dstat('combo4', 1, 'max'); }
   else if (comboMult() > before) { popText(`🔥 Combo x${comboMult()}!`, 'big'); sfx.stop(); if (comboMult() >= 4) dstat('combo4', 1, 'max'); }
   comboHUD();
 }
-function loseCombo() { if (R.combo >= 8) popText('Combo lost', 'dim'); R.combo = 0; R.comboT = 0; comboHUD(); }
+function loseCombo() { if (R.fever > 0 && !S.paused) return; if (R.combo >= 8) popText('Combo lost', 'dim'); R.combo = 0; R.comboT = 0; comboHUD(); }
 function comboHUD() { const el = $('#hCombo'); if (R.combo >= 3) { el.classList.remove('hidden'); el.textContent = `x${comboMult()} · ${R.combo}`; el.classList.remove('pop'); void el.offsetWidth; el.classList.add('pop'); } else el.classList.add('hidden'); }
-function nearMiss(txt, pts, big) { const p = pts * comboMult(); S.score += p; addCombo(2); addLantern(0.5); popText(`${txt} +${p}`, big ? 'big' : ''); sfx.whoosh(); scorePop(); buzz(big ? 14 : 6); R.nearN = (R.nearN || 0) + 1; }
+function nearMiss(txt, pts, big) { const p = pts * comboMult(); S.score += p; addCombo(2); addLantern(0.5); popText(`${txt} +${p}`, big ? 'big' : ''); sfx.whoosh(); scorePop(); buzz(big ? 14 : 6); R.nearN = (R.nearN || 0) + 1; PG.track('nearmiss', 1); }
 function popText(txt, cls = '') {
   const el = document.createElement('div'); el.className = 'popt ' + cls; el.textContent = txt;
   el.style.left = (50 + rand(-18, 18)) + '%'; $('#pops').appendChild(el); if ($('#pops').children.length > 3) $('#pops').firstElementChild.remove(); setTimeout(() => el.remove(), 1100);
@@ -1429,6 +1476,7 @@ function onHit(a) {
 function updatePowers(dt) {
   if (R.comboT > 0) { R.comboT -= dt; if (R.comboT <= 0 && R.combo) { R.combo = 0; comboHUD(); } }
   if (R.fire > 0) { R.fire -= dt; R.inv = Math.max(R.inv, 0.05); for (let k = 0; k < 3; k++) fx.emit(R.px + rand(-0.4, 0.4), rand(0.2, 1.8), rand(0.2, 1.2), rand(-0.6, 0.6), rand(1.5, 3), rand(1, 4), 0.45, 0.55, pick(['#ff5722', '#ffb300', '#ffd54f']), 1.6); if (R.fire <= 0) { R.inv = 0.8; powerHUD(); } }
+  feverTick(dt);
   if (R.magnet > 0) { R.magnet -= dt; if (R.magnet <= 0) powerHUD(); }
   if (R.shield) { R.shieldT -= dt; if (R.shieldT <= 0) { R.shield = false; powerHUD(); } }
   shieldBubble.visible = R.shield; if (R.shield) { shieldBubble.position.set(R.px, R.py + 1.2, 0); shieldBubble.material.opacity = 0.26 + 0.08 * Math.sin(S.t * 6); shieldBubble.rotation.y = Math.sin(S.t * 0.8) * 0.25; }
@@ -1465,9 +1513,9 @@ function activatePower(k) {
 }
 function powerHUD(tickOnly) {
   const el = $('#hPow'); if (!R) return;
-  const act = R.wings > 0 ? ['wings', R.wings] : R.fire > 0 ? ['fire', R.fire] : R.magnet > 0 ? ['lamp', R.magnet] : R.shield ? ['shield', R.shieldT] : null;
+  const act = R.fever > 0 ? ['fever', R.fever] : R.wings > 0 ? ['wings', R.wings] : R.fire > 0 ? ['fire', R.fire] : R.magnet > 0 ? ['lamp', R.magnet] : R.shield ? ['shield', R.shieldT] : null;
   if (!act) { el.classList.add('hidden'); return; }
-  const P0 = POWERS[act[0]], pct = Math.max(0, act[1] / P0.dur * 100);
+  const P0 = act[0] === 'fever' ? { icon: '🔥', name: 'FEVER ×2', dur: FEVER_T } : POWERS[act[0]], pct = Math.min(100, Math.max(0, act[1] / P0.dur * 100));
   if (!tickOnly || el.classList.contains('hidden') || el.dataset.k !== act[0]) { el.dataset.k = act[0]; el.innerHTML = `${P0.icon} <span>${P0.name}${R.shield && act[0] !== 'shield' ? ' + 🛡️' : ''}</span><i><b></b></i>`; el.classList.remove('hidden'); }
   el.querySelector('b').style.width = pct.toFixed(0) + '%';
 }
@@ -1483,7 +1531,7 @@ function crash(cause) {
   if (R.boss) R.boss.crashes++; if (R.vis && R.vis.boss) R.vis.boss.crashes++; R.wings = 0; playerWings.visible = false; laneWarn.visible = false; $('#gust').classList.remove('show');
   bankRun(false);
   settleRunner(); S.paused = true; sfx.crash(); shakeDOM(true); loseCombo();
-  R.fire = 0; R.magnet = 0; R.shield = false; R.dark = 0; shieldBubble.visible = false; setOp(el$('darkV'), 0); setOp(el$('speedLines'), 0); hideGateUI(); powerHUD();
+  R.fire = 0; R.magnet = 0; R.fever = 0; document.body.classList.remove('fever'); R.shield = false; R.dark = 0; shieldBubble.visible = false; setOp(el$('darkV'), 0); setOp(el$('speedLines'), 0); hideGateUI(); powerHUD();
   player.root.rotation.x = -0.5; player.root.position.y = 0;
   setTimeout(() => showFallen(cause), 450);
 }
@@ -1496,6 +1544,7 @@ function showFallen(cause) {
     ${verseHTML(v)}
     <div class="reach"><div class="rk">You reached <b>${km.toFixed(1)} km</b> of ${C.TOTAL_KM} km</div><div class="rbar"><i style="width:${(km / C.TOTAL_KM * 100).toFixed(1)}%"></i><em style="left:${(best / C.TOTAL_KM * 100).toFixed(1)}%"></em></div><div class="small">${isBest ? '🏁 New best distance!' : `🏁 Best: ${best.toFixed(1)} km`} · ${esc(zoneAt(km).name)}</div></div>
     <div class="chips"><span class="chip">✨ ${S.score} light</span><span class="chip">📍 ${esc(C.STOPS[Math.min(R.stopIdx, C.STOPS.length - 1)])} next</span><span class="chip">📖 ${S.quizRight}/${S.quizTotal} gates</span></div>
+    ${progressHTML()}
     ${!R.revived ? `<p class="small" style="margin:4px 0">You can <b>rise again</b> once per run:</p>
       <button class="btn green" id="riseQ">🙏 Rise again · answer a Bible question</button>
       <button class="btn primary" id="riseL" ${S.score < cost ? 'disabled' : ''}>✨ Rise again · spend ${cost} light${S.score < cost ? ' (not enough yet)' : ''}</button>` : '<p class="small">You have already risen once this run.</p>'}
@@ -2079,6 +2128,7 @@ function enterTitle() {
   $('#hiscore').textContent = hs ? `🏆 Best on this phone: ${hs.score} by ${hs.name} (Chapter ${hs.chapter})` : '';
   const st = M.dailyState(), dl = M.dailyFor(st.day), dn = dl.filter(c => st.done[c.id]).length, w = M.wallet(), bk = M.bestKm();
   $('#btnDaily').innerHTML = `<i>📅</i><span>Daily</span><em>${dn}/3</em>`; $('#btnShop').innerHTML = `<i>🛍️</i><span>Shop</span><em>💡${w.light}</em>`;
+  paintProgBar(); $('#btnDaily').innerHTML = `<i>🎖️</i><span>Rewards</span><em>${PG.chests() ? '🎁' + PG.chests() : dn + '/3'}</em>`;
   $('#streakNote').textContent = M.streakNote() + (bk >= 0.5 ? ` · 🏁 Best ${bk.toFixed(1)} km` : '');
   const ch = $('#challenge'); if (CHALLENGE) { ch.classList.remove('hidden'); ch.innerHTML = `⚔️ <b>${esc(CHALLENGE.from)}</b> ran <b>${CHALLENGE.km.toFixed(1)} km</b>. Can you beat it?${CHALLENGE.room ? ` · Room ${esc(CHALLENGE.room)}` : ''}`; } else ch.classList.add('hidden');
 }
@@ -2217,12 +2267,66 @@ function dailyHTML() {
     <p class="small">${esc(M.streakNote())}. Day 7 gives a big bonus.</p>
     <h3>📖 Today's memory verse</h3><div class="verse">“${esc(v.parts.join(' '))}”<b>${esc(v.ref)} (KJV)</b></div>`;
 }
-$('#btnDaily').addEventListener('click', () => {
-  ensureAudio(); sfx.tap();
-  $('#modalBody').innerHTML = dailyHTML() + '<button class="btn primary" id="dGo">Let\'s run ▶</button><button class="btn ghost" id="dClose">Close</button>';
-  show('modal'); $('#modalBody').scrollTop = 0; $('#dClose').onclick = () => { sfx.tap(); hide('modal'); };
-  // v8: "Let's run" used to only close the panel; now it actually starts/continues the run
+$('#btnDaily').addEventListener('click', () => { ensureAudio(); sfx.tap(); openHub('today'); });
+$('#progBar').addEventListener('click', () => { ensureAudio(); sfx.tap(); openHub(PG.chests() ? 'chest' : 'missions'); });
+/* =========================================================
+   v12 · REWARDS HUB: streak calendar, dailies, weekly challenge, missions, chests, Bible cards, badges, rank ladder
+   ========================================================= */
+const RAR = { c: 'Common', r: 'Rare', e: 'Epic' };
+function bar(p, n, cls = '') { return `<div class="pbar ${cls}"><i style="width:${Math.min(100, p / n * 100).toFixed(1)}%"></i></div>`; }
+function levelHTML() { const L = PG.level(); return `<div class="lvrow"><div class="lvb"><b>${L.lvl}</b><small>LEVEL</small></div><div class="lvi"><div class="lvt">${L.rank.icon} ${esc(L.rank.name)}${L.rank.next ? `<span> · ${esc(L.rank.next[1])} at Lv ${L.rank.next[0]}</span>` : ''}</div>${bar(L.xp, L.need, 'xp')}<div class="small">${L.xp} / ${L.need} XP</div></div></div>`; }
+function missionsHTML() { return PG.missions().map(m => `<div class="dch"><div class="dt">🎯 ${esc(m.t)}<b>+${m.xp} XP · ${m.r} 💡</b></div>${bar(m.p, m.n)}<div class="small">${Math.min(m.p, m.n)} / ${m.n}</div></div>`).join(''); }
+function weeklyHTML() { const w = PG.weekly(); return `<div class="dch weekly ${w.done ? 'done' : ''}"><div class="dt">🏅 ${esc(w.t)}<b>${w.done ? '✅ Done' : '+2 🎁 · 500 💡'}</b></div>${bar(w.p, w.n, 'gold')}<div class="small">${Math.min(w.p, w.n)} / ${w.n} · resets Monday</div></div>`; }
+function calendarHTML() { return `<div class="cal">${PG.calendar().map(d => `<div class="cd ${d.got ? 'got' : ''} ${d.today ? 'today' : ''}"><small>Day ${d.day}</small><i>${d.chest ? '🎁' : '💡'}</i><b>${d.reward}</b></div>`).join('')}</div>`; }
+function openHub(tab = 'today') {
+  const n = PG.chests(), tabs = [['today', '📅 Today'], ['missions', '🎯 Goals'], ['chest', `🎁${n ? ` ${n}` : ''}`], ['cards', '🃏 Cards'], ['badges', '🏅 Badges']];
+  let body = '';
+  if (tab === 'today') body = `<h3>🔥 Streak calendar</h3>${calendarHTML()}<p class="small">${esc(M.streakNote().replace(/[.!]+$/, ''))}. Every 7th day also drops a 🎁 chest.</p>${dailyHTML().replace(/<h3>🔥 Streak[\s\S]*?<\/p>/, '')}<h3>🏅 This week</h3>${weeklyHTML()}`;
+  else if (tab === 'missions') body = `${levelHTML()}<h3>🎯 Missions <span class="small">(finish one and a new one slides in · every 3rd gives a 🎁)</span></h3>${missionsHTML()}<h3>🪜 Rank ladder</h3><div class="ranks">${PG.RANKS.map(r => `<span class="${PG.level().lvl >= r[0] ? 'on' : ''}">${r[2]} ${r[1]}<small>Lv ${r[0]}</small></span>`).join('')}</div>`;
+  else if (tab === 'chest') body = `<div class="chestbox"><div class="chest ${n ? 'ready' : ''}" id="chestBig">🎁</div><p id="chestCount"><b>${n}</b> chest${n === 1 ? '' : 's'} to open</p><button class="btn primary" id="chestOpen" ${n ? '' : 'disabled'}>✨ Open a chest</button><div id="chestOut"></div><p class="small">Chests come from levelling up, every 3rd mission, badges, 7-day streaks and the weekly challenge. They hold light and Bible hero cards. No real money, ever.</p></div>`;
+  else if (tab === 'cards') body = PG.cards().map(st => `<h3>📖 ${esc(st.name)} <span class="small">${st.cards.filter(c => c.n).length}/${st.cards.length}${st.done ? ' · ✅ set complete +300 💡' : ''}</span></h3><div class="cards">${st.cards.map(c => `<div class="card3 ${c.rar} ${c.n ? '' : 'locked'}"><i>${c.n ? c.icon : '❔'}</i><b>${c.n ? esc(c.name) : '???'}</b><small>${c.n ? esc(c.ref) : RAR[c.rar]}</small>${c.n > 1 ? `<em>×${c.n}</em>` : ''}</div>`).join('')}</div>`).join('');
+  else body = `<div class="badges">${PG.achievements().map(a => `<div class="badge ${a.got ? 'got' : ''}"><i>${a.got ? a.icon : '🔒'}</i><b>${esc(a.t)}</b><small>${esc(a.d)}</small></div>`).join('')}</div>`;
+  $('#modalBody').innerHTML = `<h2>🎖️ Rewards</h2><div class="seg tabs hubtabs">${tabs.map(t => `<button data-t="${t[0]}" class="${t[0] === tab ? 'on' : ''}">${t[1]}</button>`).join('')}</div>${body}<button class="btn primary" id="dGo">Let's run ▶</button><button class="btn ghost" id="dClose">Close</button>`;
+  show('modal'); $('#modalBody').scrollTop = 0;
+  $('#modalBody').querySelectorAll('.hubtabs button').forEach(b => b.onclick = () => { sfx.tap(); openHub(b.dataset.t); });
+  $('#dClose').onclick = () => { sfx.tap(); hide('modal'); if (S.mode === 'title') enterTitle(); };
   $('#dGo').onclick = () => { hide('modal'); (save ? $('#btnContinue') : $('#btnNew')).click(); };
+  if ($('#chestOpen')) $('#chestOpen').onclick = () => {
+    const ch = $('#chestBig'); ch.classList.remove('pop'); void ch.offsetWidth; ch.classList.add('shake'); sfx.whoosh(); buzz(20);
+    $('#chestOpen').disabled = true;
+    setTimeout(() => {
+      const r = PG.openChest(); ch.classList.remove('shake'); ch.classList.add('pop'); if (!r) return;
+      sfx.power(); setTimeout(() => sfx.good(), 200); buzz([20, 30, 50]);
+      const c = r.card; $('#chestOut').innerHTML = `<div class="reveal ${c.rar}"><div class="card3 ${c.rar} flip"><i>${c.icon}</i><b>${esc(c.name)}</b><small>${esc(c.ref)}</small></div><p><b>${RAR[c.rar]}</b> ${r.dup ? 'duplicate (+40 💡 bonus)' : 'new card!'} · +${r.light} 💡 · +${r.xp} XP${r.setDone ? `<br>🎉 <b>${esc(r.setDone)} set complete!</b> +300 💡` : ''}</p></div>`;
+      const left = PG.chests(); $('#chestOpen').disabled = !left; $('#chestOpen').textContent = left ? `✨ Open another (${left})` : 'No chests left';
+      document.querySelector('.hubtabs [data-t="chest"]').textContent = `🎁${left ? ` ${left}` : ''}`; $('#chestCount').innerHTML = `<b>${left}</b> chest${left === 1 ? '' : 's'} to open`; ch.classList.toggle('ready', !!left);
+    }, 900);
+  };
+}
+// results block for the "one more run" screens: XP gained, level bar, missions, next unlock
+function progressHTML() {
+  const r = PG.runSummary(), w = M.wallet(), next = Object.values(M.SHOP).flat().filter(i => !w.owned.includes(i.id) && i.price > 0).sort((a, b) => a.price - b.price)[0];
+  return `<div class="runprog"><div class="rpx">+${r.gained} XP${r.ups ? ` · ⬆️ Level ${r.lvl}!` : ''}${r.chests ? ` · <b>🎁 ${r.chests} chest${r.chests > 1 ? 's' : ''} waiting</b>` : ''}</div>
+    <div class="rpl">Lv ${r.lvl} ${r.rank.icon} ${esc(r.rank.name)} ${bar(r.xp, r.need, 'xp')}</div>
+    ${r.missions.slice(0, 3).map(m => `<div class="rpm"><span>🎯 ${esc(m.t)}</span>${bar(m.p, m.n)}</div>`).join('')}
+    ${next ? `<div class="rpm"><span>🛍️ Next unlock: ${next.icon} ${esc(next.name)} (${Math.min(w.light, next.price)}/${next.price} 💡)</span>${bar(w.light, next.price, 'gold')}</div>` : ''}</div>`;
+}
+function paintProgBar() {
+  const L = PG.level(), n = PG.chests(), el = $('#progBar'); if (!el) return;
+  el.innerHTML = `<span class="pl">Lv <b>${L.lvl}</b></span><span class="pr">${L.rank.icon} ${esc(L.rank.name)}</span>${bar(L.xp, L.need, 'xp')}${n ? `<span class="pc">🎁 ${n}</span>` : ''}`;
+}
+let lvlQ = [];
+function celebrate(html, cls) {
+  const el = $('#celebrate'); lvlQ.push([html, cls]); if (el.classList.contains('show')) return;
+  const next = () => { const it = lvlQ.shift(); if (!it) return; el.className = 'celebrate ' + it[1]; el.innerHTML = it[0]; void el.offsetWidth; el.classList.add('show'); setTimeout(() => { el.classList.remove('show'); setTimeout(next, 350); }, 2300); };
+  next();
+}
+PG.on((type, d) => {
+  if (type === 'level') { celebrate(`<i>⬆️</i><b>LEVEL ${d.lvl}</b><span>${d.newRank ? `New rank: ${d.rank.icon} ${esc(d.rank.name)}!` : '🎁 +1 chest'}</span>`, 'lv'); sfx.power(); buzz([20, 40, 60]); }
+  else if (type === 'mission') { if (S.mode === 'run') popText(`🎯 ${d.t} ✓ +${d.xp} XP`, 'big'); else toast(`🎯 Mission done: ${d.t} (+${d.xp} XP)`, 2400); sfx.good(); }
+  else if (type === 'ach') { celebrate(`<i>${d.icon}</i><b>BADGE: ${esc(d.t)}</b><span>${esc(d.d)} · 🎁 +1 chest</span>`, 'badge'); sfx.good(); buzz(30); }
+  else if (type === 'weekly') { celebrate(`<i>🏅</i><b>WEEKLY DONE!</b><span>${esc(d.t)} · 🎁🎁 +500 💡</span>`, 'badge'); sfx.good(); }
+  paintProgBar();
 });
 /* ---- shop ---- */
 // v9: creator tab row scroll hint (fade edges + a nudging › arrow while more tabs are off-screen)
@@ -2348,7 +2452,7 @@ function showEnding() {
   const lant = Math.round(S.lantern), bonus = lant * 5 + vCount * 25 + save.chapter * 50;
   S.score += bonus; const total = S.score;
   for (const k of shown) save.totals[k] = (save.totals[k] || 0) + S.virtues[k];
-  save.lantern = lant; save.totalScore = (save.totalScore || 0) + total; const doneCh = save.chapter; save.chapter++; persist();
+  save.lantern = lant; save.totalScore = (save.totalScore || 0) + total; const doneCh = save.chapter; save.chapter++; persist(); PG.track('camp', 1);
   const hs = JSON.parse(localStorage.getItem('lr3d_high') || 'null'); const isHigh = !hs || total > hs.score;
   if (isHigh) localStorage.setItem('lr3d_high', JSON.stringify({ score: total, name: save.name, chapter: doneCh }));
   const tier = lant >= 85 ? ['A Shining City on a Hill', 'Your lantern is blazing! People could see your light from the gate.'] : lant >= 60 ? ['A Bright and Faithful Light', 'Your light grew all through the journey. Keep tending it!'] : ['A Light That Is Growing', 'Every lantern starts small. God\'s mercy is new every morning, and so is your chance to shine.'];
@@ -2366,6 +2470,7 @@ function showEnding() {
     <div class="big-score"><div class="n">${total}</div><div class="small" style="text-align:center">light score ${isHigh ? '· 🏆 new best on this phone!' : `· best: ${hs.score} (${esc(hs.name)})`}</div></div>
     <div class="small">Lantern brightness: <b>${lant}%</b> · Lantern Lv <b>${lanternLevel()}</b></div><div class="meter"><i style="width:${lant}%"></i></div>
     <div class="chips"><span class="chip">✨ ${S.orbs} orbs</span><span class="chip">📖 ${S.quizRight}/${S.quizTotal} gates</span><span class="chip">📜 ${S.verseDone ? 'Verse memorised' : S.vGot + '/' + S.plan.verse.parts.length + ' verse'}</span>${S.studyTotal ? `<span class="chip">🎓 Study ${S.studyRight}/${S.studyTotal}</span>` : ''}<span class="chip">🤲 ${S.log.filter(l => l.good).length} good choices</span><span class="chip">${S.plan.quest.item} ${K ? K.quest : 0}/${S.plan.quest.n}</span><span class="chip dim">+${bonus} end bonus</span></div>
+    ${progressHTML()}
     <div class="story">🧑🏾‍🏫 ${esc(st.outro)}</div>${sv ? verseHTML(sv) : ''}
     <h3>Virtues you showed (${shown.length}/12)</h3><div class="vgrid">${vList}</div>
     <h3>Why it matters</h3>
@@ -2489,6 +2594,16 @@ function sceneryOutlines(on) {
   for (const r of roadside) r.obj.traverse(f); for (const h of walkers) h.root.traverse(f);
   palms.children[0].visible = TIER !== 'low'; lamps.children[0].visible = TIER !== 'low';
 }
+let POST = null, gradeT = 0;
+const _sunW = new THREE.Vector3();
+function gradeKey() {
+  if (S.mode === 'camp' || S.mode === 'end') return 'camp';
+  if (S.mode !== 'run' || !R) return 'day';
+  if (R.vis) return R.vis.id;
+  if (R.boss && R.boss.id === 'storm') return 'storm';
+  const z = zoneAt(KM(R.dist)).id;
+  return ({ ojota: 'day', berger: 'day', kara: 'kara', bridge: 'bridge', mowe: 'market' })[z] || (R.ev && R.ev.mod && R.ev.mod.dusk ? 'dusk' : 'ogun');
+}
 function applyQuality(tier) {
   TIER = tier; Q = QUALITY[tier]; setCharTier(tier); setVehTier(tier);
   if (renderer.shadowMap.enabled !== Q.shadows) { renderer.shadowMap.enabled = Q.shadows; sun.castShadow = Q.shadows; scene.traverse(o => { if (o.material) [].concat(o.material).forEach(m => m.needsUpdate = true); }); }
@@ -2496,6 +2611,11 @@ function applyQuality(tier) {
   sceneryOutlines(Q.sceneryOutlines);
   DYN.target = Q.cap === 30 ? 1000 / 30 : 1000 / 60; DYN.acc = DYN.n = DYN.bad = 0;
   setPR(Q.prMax); document.body.dataset.tier = tier;
+  // v12: HDR bloom + ACES + colour grade + light shafts on the High tier only
+  const wantPost = tier === 'high' && !params.has('nopost');
+  if (wantPost && !POST) { try { POST = createPost(renderer); } catch (e) { console.warn('post off', e); } }
+  if (POST) POST.on = wantPost;
+  setRoadPBR(tier === 'high');
 }
 function lowerQuality() {   // auto step-down (only in Auto mode)
   const next = TIER === 'high' ? 'med' : 'low'; if (next === TIER) return;
@@ -2542,7 +2662,8 @@ function loop(now) {
   // while a bottom sheet is open (run or camp), slide the view up so the player stays visible above it
   S.vo = lerp(S.vo || 0, S.dlgOpen && (S.mode === 'run' || S.mode === 'camp') ? 0.2 : 0, Math.min(1, real * 6));
   if (S.vo > 0.002) camera.setViewOffset(innerWidth, innerHeight, 0, S.vo * innerHeight, innerWidth, innerHeight); else if (camera.view && camera.view.enabled) camera.clearViewOffset();
-  renderer.render(scene, camera);
+  if (POST && POST.on) { if ((gradeT -= real) <= 0) { gradeT = 0.4; POST.setGrade(GRADES[gradeKey()] || GRADES.day); } _sunW.copy(sunDisc.position).add(sky.position); renderer.info.reset(); POST.render(scene, camera, real, _sunW); }
+  else { renderer.info.reset(); renderer.render(scene, camera); }
   if (FT.on && frameMs > 0) FT.list.push(frameMs);
   if (LAT.t0) { LAT.list.push(performance.now() - LAT.t0); if (LAT.list.length > 200) LAT.list.shift(); LAT.t0 = 0; }
 }

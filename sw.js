@@ -1,9 +1,9 @@
 // Light Run service worker: offline play + versioned caching.
 // Bump VERSION on every release: the new worker precaches fresh files and deletes old caches.
-const VERSION = 'lr-v13.0.0';
+const VERSION = 'lr-v13.1.0';
 const CORE = [
   './', 'index.html', 'style.css', 'manifest.webmanifest',
-  'js/main.js', 'js/toon.js', 'js/chibi.js', 'js/props.js', 'js/look.js', 'js/meta.js', 'js/content.js', 'js/books.js', 'js/worlds.js', 'js/lb-config.js', 'js/models.js', 'js/vendor/three.min.js',
+  'js/main.js', 'js/toon.js', 'js/chibi.js', 'js/props.js', 'js/look.js', 'js/meta.js', 'js/content.js', 'js/books.js', 'js/worlds.js', 'js/lb-config.js', 'js/models.js', 'js/progress.js', 'js/post.js', 'js/vendor/three.min.js',
   'assets/vehicles/danfo.glb', 'assets/vehicles/danfo_lod1.glb', 'assets/vehicles/okada.glb', 'assets/vehicles/okada_lod1.glb',
   'assets/vendor/three-addons/loaders/GLTFLoader.js', 'assets/vendor/three-addons/utils/BufferGeometryUtils.js', 'assets/vendor/three-addons/utils/SkeletonUtils.js',
   'icons/icon-192.png', 'icons/icon-512.png', 'icons/maskable-512.png',
