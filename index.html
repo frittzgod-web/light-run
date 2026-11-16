@@ -46,6 +46,7 @@
 
 <!-- Title poster -->
 <section id="title" class="screen show">
+  <div class="verchip appver"></div>
   <div class="poster">
     <div class="burst"></div>
     <div class="ribbon">LAGOS ➜ KM 46</div>
@@ -133,6 +134,7 @@
     <label class="setrow" id="hapRow"><b>📳 Vibration</b><input type="checkbox" id="setHaptics" class="tog"></label>
     <label class="setrow"><b>🌙 Reduce motion</b><input type="checkbox" id="setMotion" class="tog"></label>
     <div class="row2"><button class="btn slim" id="btnTutAgain">🎓 Replay tutorial</button><button class="btn primary slim" data-close="settings">Done</button></div>
+    <p class="verlbl"><span class="appver"></span> · <button class="linkbtn" id="btnUpdate">Check for update</button></p>
   </div>
 </section>
 <section id="pause" class="screen dim">
@@ -142,6 +144,7 @@
     <button class="btn primary" id="btnResume">▶ Resume</button>
     <button class="btn slim hidden" id="btnPauseCP">↩ Restart from last bus stop</button>
     <div class="row2"><button class="btn slim" id="btnPauseSet">⚙️ Settings</button><button class="btn slim" id="btnPauseHow">❓ How to play</button></div>
+    <p class="verlbl"><span class="appver"></span></p>
     <button class="btn ghost slim" id="btnQuit">🏠 Quit to title</button>
   </div>
 </section>
@@ -180,6 +183,8 @@
   })();
 </script>
 <script src="js/lb-config.js"></script>
+<div id="dbg" class="hidden"></div>
+<div id="gateChip" aria-live="polite"></div>
 <div id="celebrate" class="celebrate" aria-live="polite"></div>
 </body>
 </html>

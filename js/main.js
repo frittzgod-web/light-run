@@ -22,6 +22,8 @@ const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;',
 const params = new URLSearchParams(location.search);
 const TIME_SCALE = clamp(+params.get('speed') || 1, 1, 8);
 const LITE = params.has('lite');
+const APP_VER = 'v14.0';   // shown on the title, pause and settings so a phone can tell which build it runs
+const DEBUG = params.has('debug');
 const NOVIS = params.has('novision');   // v10 test switch: journey without the vision gate
 const AUTO = params.has('autopilot'), AUTO_MIX = params.get('autopilot') === 'mix', AUTO_FUN = AUTO;
 // v11: autopilot is a test helper only (explicit ?autopilot in the address); it is never stored and always shows a badge
@@ -201,6 +203,8 @@ const SAVE_KEY = 'lr3d_save';
 function storedLook() { try { return JSON.parse(localStorage.getItem(LK.LOOK_KEY) || 'null'); } catch (e) { return null; } }
 function freshSave() { const l = storedLook(); return { name: localStorage.getItem('lr_name') || 'Pilgrim', gender: l ? l.gender : 'm', outfit: 0, skin: 1, chapter: 1, totals: {}, lantern: 50, totalScore: 0, used: {}, look: l || undefined }; }
 let save = JSON.parse(localStorage.getItem(SAVE_KEY) || 'null');
+// v14 migration: saves from v10–v12 carried the once-per-chapter vision flag (visCh); gates no longer use it, drop it.
+if (save && typeof save === 'object') { if ('visCh' in save) { delete save.visCh; localStorage.setItem(SAVE_KEY, JSON.stringify(save)); } if (!(save.chapter >= 1)) save.chapter = 1; }
 const persist = () => localStorage.setItem(SAVE_KEY, JSON.stringify(save));
 function totalVirtues() { return Object.values(save.totals).reduce((a, b) => a + b, 0); }
 function lanternLevel() { return 1 + Math.floor(totalVirtues() / 6); }
@@ -824,8 +828,10 @@ function bookRec(b, id) { return b.books[id] || (b.books[id] = { done: false, pl
 function bookUnlocked(id, b = bible()) { if (!BK.PLAYABLE.includes(id)) return false; const pre = BK.UNLOCK_AFTER[id]; return !pre || !!(b.books[pre] && b.books[pre].done); }
 // v12: each journey run has three vision gates (one per book). A gate takes the next unfinished open book first;
 // then finished books cycle (rotating with the run count) for replays and stars. Locked in when the gate comes into view.
-const VIS_STOPS = [0, 3, 5];   // past Ojota (KM 2), Warewa (KM 16) and Magboro (KM 24): clear of bosses and roadside encounters
-const visPortalD = (k = 0) => stopDist(VIS_STOPS[k]) + 70;
+// v14: a vision gate every ~3–5 km along the whole journey (just past the bus-stop questions, never inside a boss stretch),
+// so a missed gate is soon followed by another. Up to VIS_MAX visions per run, then the road is yours.
+const VIS_KM = [2.35, 7.0, 9.35, 16.35, 20.0, 24.35, 32.35, 39.6, 43.0], VIS_STOPS = VIS_KM, VIS_MAX = 3;
+const visPortalD = (k = 0) => VIS_KM[k] * UPK;
 function slotBook(k) {
   const b = bible(), open = BK.PLAYABLE.filter(id => bookUnlocked(id, b)), used = new Set(R.visSlots.map(s => s.book).filter(Boolean));
   const fresh = open.filter(id => !(b.books[id] && b.books[id].done));
@@ -835,7 +841,7 @@ function slotBook(k) {
   return fresh[0] || open[(R.visRun + k) % open.length] || null;   // retry an unfinished book rather than show no gate
 }
 function journeyBook() { return R && R.visSlots ? slotBook(0) : BK.PLAYABLE[0]; }
-const nextSlot = () => { if (!R || !R.visSlots) return -1; for (let k = 0; k < VIS_STOPS.length; k++) if (R.visSlots[k].state === 'open' && visPortalD(k) - R.dist > -30) return k; return -1; };
+const nextSlot = () => { if (!R || !R.visSlots || (R.visDoneN || 0) >= VIS_MAX) return -1; for (let k = 0; k < VIS_STOPS.length; k++) if (R.visSlots[k].state === 'open' && visPortalD(k) - R.dist > -30) return k; return -1; };
 const VIS_LEN = 2000, VIS_GATES = [430, 900, 1330], VIS_BOSS = [1420, 1930];
 const worlds = {}, portals = {};
 PRESETS.vis_exodus_b = { top: '#061a33', mid: '#1f5a78', bot: '#0b3040', fog: '#1d4f63', sun: '#b8d8ff', sunI: 1.1, hemiS: '#8fc0e0', hemiG: '#1c3a44', hemiI: 1.0, sunPos: [0.0, 0.8, -0.5] };
@@ -875,6 +881,7 @@ function visGateZone(arrive) {
   return z;
 }
 function enterVision(id, journey) {
+  gateChip('');
   const W = warmWorld(id), WD = BK.WORLDS[id], b = bible(), rec = bookRec(b, id);
   fadeFlash(); sfx.power(); buzz(30); shakeDOM();
   if (R.boss) bossEnd(false);
@@ -904,18 +911,24 @@ function leaveVisionWorld() { document.body.classList.remove('vfin');
   verseHUD();
 }
 // journey: the golden vision gate across the expressway just past Ojota
+let gateChipTxt = '';
+function gateChip(t) { if (t === gateChipTxt) return; gateChipTxt = t; const e = $('#gateChip'); if (!e) return; e.textContent = t; e.classList.toggle('show', !!t); }
+function gateLog(msg) { if (!R) return; (R.gateLog || (R.gateLog = [])).push(`${KM(R.dist).toFixed(2)}: ${msg}`); if (R.gateLog.length > 8) R.gateLog.shift(); if (DEBUG) console.log('[gate]', msg); }
 function journeyPortal() {
-  if (!R.visOn) return;
+  if (!R.visOn || nextSlot() < 0) gateChip('');
+  if (!R.visOn) { if (!R.visOffLogged) { R.visOffLogged = 1; gateLog(NOVIS ? 'gates off (?novision)' : 'gates off (vision run)'); } return; }
+  R.visSlots.forEach((sl, j) => { if (sl.state === 'open' && visPortalD(j) - R.dist < -30) { sl.state = 'missed'; gateLog(`gate ${j + 1} passed without entering (jumped past it)`); } });
   const k = nextSlot(); Object.values(portals).forEach(p => { if (p.userData.slot !== k) p.visible = false; });
   if (k < 0) { R.visBook = null; return; }
   const sl = R.visSlots[k], pd = visPortalD(k) - R.dist;
   if (pd > 330) return;
-  if (!sl.book) { sl.book = slotBook(k); if (!sl.book) { sl.state = 'none'; return; } warmWorld(sl.book); }
+  if (!sl.book) { sl.book = slotBook(k); if (!sl.book) { sl.state = 'none'; gateLog(`gate ${k + 1}: no playable book`); return; } warmWorld(sl.book); gateLog(`gate ${k + 1} ready: ${sl.book} at KM ${KM(visPortalD(k)).toFixed(2)}`); }
   const id = sl.book; R.visBook = id;
   const P0 = getPortal(id); P0.userData.slot = k;
   P0.visible = pd > -3; P0.position.z = -pd; if (P0.visible) { P0.userData.disc.rotation.z = S.t * 0.8; P0.userData.disc.material.opacity = 0.36 + 0.1 * Math.sin(S.t * 4); }
-  if (!sl.told && pd < readDist() + 40) { sl.told = true; const rec = bible().books[id]; toast(`✨ Vision gate ${k + 1}/3: ${BK.WORLDS[id].name}${rec && rec.done ? ` (best ${'★'.repeat(rec.stars || 0)}${'☆'.repeat(3 - (rec.stars || 0))})` : ''}! Run through it`, 2600); sfx.stop(); }
-  if (pd <= 0 && pd > -30) { sl.state = 'in'; R.visSlot = k; enterVision(id, true); }   // (a debug jump far past the gate skips it)
+  if (!sl.told && pd < readDist() + 40) { sl.told = true; const rec = bible().books[id]; /* v14: the top chip announces the gate (no bottom toast) */ void 0; sfx.stop(); }
+  gateChip(pd > 0 && pd < readDist() + 260 ? `✨ Vision gate in ${Math.max(10, Math.round(pd * 5 / 10) * 10)} m · ${BK.WORLDS[id].name}` : '');
+  if (pd <= 0) { if (pd < -30) gateLog(`gate ${k + 1} reached late (${(-pd).toFixed(0)} past), entering anyway`); sl.state = 'in'; R.visSlot = k; enterVision(id, true); }   // (a debug jump far past the gate skips it)
 }
 function visionRow(light) {
   const V = R.vis, O = V.boss ? V.W.bossObs : V.W.obs, lanes = freeLanes(), z = SPAWN_Z;
@@ -1031,9 +1044,9 @@ function finishVision() {
   for (let k = 0; k < 40; k++) fx.emit(R.px + rand(-3, 3), rand(0.5, 4), rand(-4, 0), rand(-3, 3), rand(1, 5), rand(-2, 2), 1.0, 0.6, pick(['#fff3a0', '#ffd23f', '#ffffff']), 0.5);
   if (V.journey) {
     leaveVisionWorld(); fadeFlash(); sfx.good();
-    const k = R.visSlot ?? 0, si = VIS_STOPS[k] + 1, back = C.STOPS[si].replace(/ \(.*\)/, '');
-    if (R.visSlots && R.visSlots[k]) R.visSlots[k].state = 'done';
-    R.dist = Math.max(R.dist, stopDist(si) - readDist() - 90); R.stopIdx = si; R.zone = -1; R.kmInt = Math.floor(KM(R.dist)); R.inv = 1.5; R.nextRow = 30; R.nextScrollD = R.dist + 80; R.nextPowerD = R.dist + 300;
+    const k = R.visSlot ?? 0, si = Math.max(0, STOP_D.findIndex(d => d > visPortalD(k))), back = 'KM ' + VIS_KM[k];
+    if (R.visSlots && R.visSlots[k]) R.visSlots[k].state = 'done'; R.visDoneN = (R.visDoneN || 0) + 1;
+    R.dist = Math.max(R.dist, visPortalD(k) + 5); R.stopIdx = si; R.zone = -1; R.kmInt = Math.floor(KM(R.dist)); R.inv = 1.5; R.nextRow = 30; R.nextScrollD = R.dist + 80; R.nextPowerD = R.dist + 300;
     R.cp = snapCP(R.dist, si, back + ' (after the vision)'); R.visBook = null; persist();
     toast(`🌈 Vision complete! ${WD.name} ${'★'.repeat(stars)}${'☆'.repeat(3 - stars)} +${bonus}${unlocked ? ` · ${unlocked} unlocked on the Bible map` : ''} · back on the expressway near ${back}`, 3600);
   } else {
@@ -1075,7 +1088,7 @@ function restartVision() {
 function leaveVisionEarly() {   // journey only: skip the vision and carry on along the expressway
   const k = R.visSlot ?? 0; if (R.visSlots && R.visSlots[k]) R.visSlots[k].state = 'skip';
   hide('modal'); leaveVisionWorld(); R.dist = visPortalD(k) + 5; settleRunner(); R.inv = 2; R.nextRow = 30; S.paused = false; R.zone = -1;
-  toast(k < 2 ? '🛣️ Back on the expressway. Another vision gate opens further down the road.' : '🛣️ Back on the expressway. The vision gates open again on your next run.', 2400);
+  toast(nextSlot() >= 0 ? '🛣️ Back on the expressway. Another vision gate opens a few km down the road.' : '🛣️ Back on the expressway. The vision gates open again on your next run.', 2400);
 }
 function showFallenVision(cause) {
   const V = R.vis, v = pick(FALL_VERSES), m = $('#modalBody'), cost = 200;
@@ -2573,11 +2586,30 @@ function endTutorial(silent) {
 }
 $('#tutSkip').addEventListener('click', e => { e.stopPropagation(); sfx.tap(); endTutorial(); });
 
+/* ---- v14: version label, update flow, ?debug overlay ---- */
+document.querySelectorAll('.appver').forEach(e => e.textContent = 'Light Run ' + APP_VER);
+window.LR_VERSION = APP_VER;
+if (DEBUG) { const d = $('#dbg'); d.classList.remove('hidden'); setInterval(() => {
+  if (!R) { d.textContent = `${APP_VER} · mode ${S.mode}`; return; }
+  const k = nextSlot(), sl = R.visSlots || [];
+  d.textContent = `${APP_VER} · ${S.mode} · KM ${KM(R.dist).toFixed(2)}${R.vis ? ' · IN ' + R.vis.id : ''}\n` +
+    (R.visOn ? sl.map((x, j) => `gate ${j + 1} KM ${KM(visPortalD(j)).toFixed(2)} ${x.book || (j === k ? '(' + slotBook(j) + ')' : '?')} ${x.state}${j === k ? ' ◀ next' : ''}`).join('\n') : 'gates off') +
+    ((R.gateLog || []).length ? '\n' + R.gateLog.slice(-4).join('\n') : '');
+}, 250); }
+let swReloadWanted = false;
+function swReloadIfIdle() { if (!swReloadWanted) return; if (!['title', 'select'].includes(S.mode)) return; swReloadWanted = false; location.reload(); }
 /* ---- orientation + install ---- */
 function tryLockPortrait() { try { if (screen.orientation && screen.orientation.lock && (document.fullscreenElement || matchMedia('(display-mode: standalone)').matches)) screen.orientation.lock('portrait').catch(() => {}); } catch (e) {} }
 document.addEventListener('pointerdown', tryLockPortrait, { once: true, passive: true });
 if ('serviceWorker' in navigator && (!/^(localhost|127\.0\.0\.1)$/.test(location.hostname) || params.has('sw'))) {
-  const reg = () => navigator.serviceWorker.register('sw.js').then(() => { window.__lrSW = 'registered'; }).catch(e => { window.__lrSW = 'failed: ' + e.message; });
+  // v14: a new version takes over at once and the game reloads itself into it (never mid-run: it waits for the title/pause)
+  const hadCtrl = !!navigator.serviceWorker.controller;
+  navigator.serviceWorker.addEventListener('controllerchange', () => { if (!hadCtrl) return; swReloadWanted = true; swReloadIfIdle(); });
+  setInterval(swReloadIfIdle, 2000);
+  const reg = () => navigator.serviceWorker.register('sw.js', { updateViaCache: 'none' }).then(r => { window.__lrSW = 'registered'; window.__lrReg = r; r.update().catch(() => {});
+      document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') r.update().catch(() => {}); });
+      setInterval(() => r.update().catch(() => {}), 15 * 60 * 1000); }).catch(e => { window.__lrSW = 'failed: ' + e.message; });
+  $('#btnUpdate') && ($('#btnUpdate').onclick = () => { const r = window.__lrReg; $('#btnUpdate').textContent = 'Checking…'; (r ? r.update() : Promise.resolve()).then(() => setTimeout(() => location.reload(), 600)).catch(() => location.reload()); });
   if (document.readyState === 'complete') setTimeout(reg, 1500); else window.addEventListener('load', () => setTimeout(reg, 1500));
 }
 
