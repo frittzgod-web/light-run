@@ -525,9 +525,10 @@ function startRun(opt = {}) {
   clearObs(); orbs.forEach(o => o.on = false); fx.clear(); resetGround();
   R = { combo: 0, comboT: 0, fire: 0, shield: false, shieldT: 0, magnet: 0, stumble: 0, lastStumble: -99, dark: 0, revived: false, nextPowerD: 380, popT: 0, dist: 0, t: 0, speed: START_SPEED, lane: 1, px: 0, pv: 0, camX: 0, py: 0, vy: 0, g: 50, onGround: true, coyote: 0, jbuf: 0, sbuf: 0, sl: 0, burst: 0, grind: false, grindM: 0, grindRun: 0, slides: 0, roofs: 0, inv: 0, shake: 0, nextRow: 40, stopIdx: 0, moralIdx: 0, dustT: 0, trailT: 0, ev: S.plan.event, gate: null, vGot: 0, nextScrollD: 120, autoT: 0, flash: 0, signFlash: null, zone: -1, boss: null, bossDone: {}, kmInt: 0, earn: 0, orbBuf: 0, dustK: 0, dustCol: '#c9a46a', traffic: 1, jamFree: 1, jamRows: 3, tightGap: false, startT: performance.now() };
   R.scrollGap = (RUN_LEN - 600) / (S.plan.verse.parts.length + 1.5);
-  // v10: a vision gate opens past Ojota once per chapter (journey runs only)
+  // v12: three vision gates on EVERY journey run (past Ojota, Warewa and Magboro), one book each
   R.wings = 0; R.vis = null; R.visSkip = false; R.visTold = false; playerWings.visible = false; Object.values(portals).forEach(p => p.visible = false);
-  R.visBook = NOVIS || opt.vision || save.visCh === save.chapter ? null : journeyBook(); if (R.visBook) warmWorld(R.visBook);
+  R.visOn = !NOVIS && !opt.vision; R.visSlots = VIS_STOPS.map(() => ({ book: null, state: 'open', told: false })); R.visBook = null; R.visRun = (+localStorage.getItem('lr_runs') || 0);
+  if (R.visOn) for (const id of BK.PLAYABLE) if (bookUnlocked(id)) warmWorld(id);
   hideScrolls(); answerGate.visible = false; hideGateUI();
   R.cp0 = R.cp = snapCP(0, 0, 'Lagos (the start)');
   hudMode('run'); verseHUD(); powerHUD(); buildMap();
@@ -791,10 +792,21 @@ function bible() { try { const b = JSON.parse(localStorage.getItem(BIBLE_KEY) ||
 function bibleSave(b) { try { localStorage.setItem(BIBLE_KEY, JSON.stringify(b)); } catch (e) {} }
 function bookRec(b, id) { return b.books[id] || (b.books[id] = { done: false, plays: 0, best: 0, stars: 0, q: {}, v: [] }); }
 function bookUnlocked(id, b = bible()) { if (!BK.PLAYABLE.includes(id)) return false; const pre = BK.UNLOCK_AFTER[id]; return !pre || !!(b.books[pre] && b.books[pre].done); }
-// the journey shows the first unfinished open book; once all three are done it rotates by chapter
-function journeyBook() { const b = bible(); return BK.PLAYABLE.find(id => bookUnlocked(id, b) && !(b.books[id] && b.books[id].done)) || BK.PLAYABLE[((save ? save.chapter : 1) - 1) % BK.PLAYABLE.length]; }
+// v12: each journey run has three vision gates (one per book). A gate takes the next unfinished open book first;
+// then finished books cycle (rotating with the run count) for replays and stars. Locked in when the gate comes into view.
+const VIS_STOPS = [0, 3, 5];   // past Ojota (KM 2), Warewa (KM 16) and Magboro (KM 24): clear of bosses and roadside encounters
+const visPortalD = (k = 0) => stopDist(VIS_STOPS[k]) + 70;
+function slotBook(k) {
+  const b = bible(), open = BK.PLAYABLE.filter(id => bookUnlocked(id, b)), used = new Set(R.visSlots.map(s => s.book).filter(Boolean));
+  const fresh = open.filter(id => !(b.books[id] && b.books[id].done));
+  const unusedFresh = fresh.filter(id => !used.has(id)); if (unusedFresh.length) return unusedFresh[0];
+  const done = open.filter(id => !fresh.includes(id) && !used.has(id));
+  if (done.length) return done[(R.visRun + k) % done.length];
+  return fresh[0] || open[(R.visRun + k) % open.length] || null;   // retry an unfinished book rather than show no gate
+}
+function journeyBook() { return R && R.visSlots ? slotBook(0) : BK.PLAYABLE[0]; }
+const nextSlot = () => { if (!R || !R.visSlots) return -1; for (let k = 0; k < VIS_STOPS.length; k++) if (R.visSlots[k].state === 'open' && visPortalD(k) - R.dist > -30) return k; return -1; };
 const VIS_LEN = 2000, VIS_GATES = [430, 900, 1330], VIS_BOSS = [1420, 1930];
-const visPortalD = () => stopDist(0) + 70;   // the vision gate opens just past Ojota; you come back out before Berger
 const worlds = {}, portals = {};
 PRESETS.vis_exodus_b = { top: '#061a33', mid: '#1f5a78', bot: '#0b3040', fog: '#1d4f63', sun: '#b8d8ff', sunI: 1.1, hemiS: '#8fc0e0', hemiG: '#1c3a44', hemiI: 1.0, sunPos: [0.0, 0.8, -0.5] };
 function getWorld(id) {
@@ -863,11 +875,17 @@ function leaveVisionWorld() { document.body.classList.remove('vfin');
 }
 // journey: the golden vision gate across the expressway just past Ojota
 function journeyPortal() {
-  const id = R.visBook; if (!id || R.visSkip) return;
-  const P0 = getPortal(id), pd = visPortalD() - R.dist;
-  P0.visible = pd < 330 && pd > -3; P0.position.z = -pd; if (P0.visible) { P0.userData.disc.rotation.z = S.t * 0.8; P0.userData.disc.material.opacity = 0.36 + 0.1 * Math.sin(S.t * 4); }
-  if (!R.visTold && pd < readDist() + 40) { R.visTold = true; toast(`✨ A vision gate is opening: ${BK.WORLDS[id].name}! Run through it`, 2600); sfx.stop(); }
-  if (pd <= 0 && pd > -30) enterVision(id, true);   // (a debug jump far past the gate skips it)
+  if (!R.visOn) return;
+  const k = nextSlot(); Object.values(portals).forEach(p => { if (p.userData.slot !== k) p.visible = false; });
+  if (k < 0) { R.visBook = null; return; }
+  const sl = R.visSlots[k], pd = visPortalD(k) - R.dist;
+  if (pd > 330) return;
+  if (!sl.book) { sl.book = slotBook(k); if (!sl.book) { sl.state = 'none'; return; } warmWorld(sl.book); }
+  const id = sl.book; R.visBook = id;
+  const P0 = getPortal(id); P0.userData.slot = k;
+  P0.visible = pd > -3; P0.position.z = -pd; if (P0.visible) { P0.userData.disc.rotation.z = S.t * 0.8; P0.userData.disc.material.opacity = 0.36 + 0.1 * Math.sin(S.t * 4); }
+  if (!sl.told && pd < readDist() + 40) { sl.told = true; const rec = bible().books[id]; toast(`✨ Vision gate ${k + 1}/3: ${BK.WORLDS[id].name}${rec && rec.done ? ` (best ${'★'.repeat(rec.stars || 0)}${'☆'.repeat(3 - (rec.stars || 0))})` : ''}! Run through it`, 2600); sfx.stop(); }
+  if (pd <= 0 && pd > -30) { sl.state = 'in'; R.visSlot = k; enterVision(id, true); }   // (a debug jump far past the gate skips it)
 }
 function visionRow(light) {
   const V = R.vis, O = V.boss ? V.W.bossObs : V.W.obs, lanes = freeLanes(), z = SPAWN_Z;
@@ -983,9 +1001,11 @@ function finishVision() {
   for (let k = 0; k < 40; k++) fx.emit(R.px + rand(-3, 3), rand(0.5, 4), rand(-4, 0), rand(-3, 3), rand(1, 5), rand(-2, 2), 1.0, 0.6, pick(['#fff3a0', '#ffd23f', '#ffffff']), 0.5);
   if (V.journey) {
     leaveVisionWorld(); fadeFlash(); sfx.good();
-    R.dist = Math.max(R.dist, stopDist(1) - readDist() - 90); R.stopIdx = 1; R.zone = -1; R.kmInt = Math.floor(KM(R.dist)); R.inv = 1.5; R.nextRow = 30; R.nextScrollD = R.dist + 80; R.nextPowerD = R.dist + 300;
-    R.cp = snapCP(R.dist, 1, 'Berger'); R.visBook = null; save.visCh = save.chapter; persist();
-    toast(`🌈 Vision complete! ${WD.name} ${'★'.repeat(stars)}${'☆'.repeat(3 - stars)} +${bonus}${unlocked ? ` · ${unlocked} unlocked on the Bible map` : ''} · back on the expressway near Berger`, 3600);
+    const k = R.visSlot ?? 0, si = VIS_STOPS[k] + 1, back = C.STOPS[si].replace(/ \(.*\)/, '');
+    if (R.visSlots && R.visSlots[k]) R.visSlots[k].state = 'done';
+    R.dist = Math.max(R.dist, stopDist(si) - readDist() - 90); R.stopIdx = si; R.zone = -1; R.kmInt = Math.floor(KM(R.dist)); R.inv = 1.5; R.nextRow = 30; R.nextScrollD = R.dist + 80; R.nextPowerD = R.dist + 300;
+    R.cp = snapCP(R.dist, si, back + ' (after the vision)'); R.visBook = null; persist();
+    toast(`🌈 Vision complete! ${WD.name} ${'★'.repeat(stars)}${'☆'.repeat(3 - stars)} +${bonus}${unlocked ? ` · ${unlocked} unlocked on the Bible map` : ''} · back on the expressway near ${back}`, 3600);
   } else {
     settleRunner(); S.paused = true; bankRun(false); V.finished = true; document.body.classList.add('vfin'); hideGateUI(); clearTimeout($('#bossCard')._t); $('#bossCard').classList.remove('show'); $('#gust').classList.remove('show'); showVisionResult(res);   // the vision world stays behind the results card
   }
@@ -1022,8 +1042,9 @@ function restartVision() {
   restartFrom(R.cp0); enterVision(id, false);
 }
 function leaveVisionEarly() {   // journey only: skip the vision and carry on along the expressway
-  hide('modal'); leaveVisionWorld(); R.visSkip = true; R.dist = visPortalD() + 5; settleRunner(); R.inv = 2; R.nextRow = 30; S.paused = false; R.zone = -1;
-  toast('🛣️ Back on the expressway. The vision gate will open again next chapter.', 2400);
+  const k = R.visSlot ?? 0; if (R.visSlots && R.visSlots[k]) R.visSlots[k].state = 'skip';
+  hide('modal'); leaveVisionWorld(); R.dist = visPortalD(k) + 5; settleRunner(); R.inv = 2; R.nextRow = 30; S.paused = false; R.zone = -1;
+  toast(k < 2 ? '🛣️ Back on the expressway. Another vision gate opens further down the road.' : '🛣️ Back on the expressway. The vision gates open again on your next run.', 2400);
 }
 function showFallenVision(cause) {
   const V = R.vis, v = pick(FALL_VERSES), m = $('#modalBody'), cost = 200;
@@ -1513,6 +1534,8 @@ function revive(msg) {
 function restartFrom(cp) {
   if (R.vis) leaveVisionWorld();
   R.visTold = false; R.visSkip = false; R.wings = 0; playerWings.visible = false;
+  // v12: restarting from a checkpoint before a vision gate re-opens that gate (same book)
+  if (R.visSlots) R.visSlots.forEach((sl, k) => { if (cp.dist < visPortalD(k) - 1) { sl.state = 'open'; sl.told = false; } });
   hide('modal'); fadeFlash(); hideGateUI();
   Object.assign(S, cp.S); S.lantern = Math.max(S.lantern, S.floor);
   if (R.boss) bossEnd(false);
@@ -2568,7 +2591,7 @@ window.LR = {
   vision(id) { startVisionRun(id || 'genesis'); },
   visD(d) { if (R && R.vis) { const V = R.vis; if (V.boss && d < VIS_BOSS[0]) visBossEnd(false); V.d = d; while (V.gi < V.gates.length && V.gates[V.gi] < d - 2) V.gi++; R.gate = null; hideGateUI(); clearObs(); R.nextRow = 20; V.nextScrollD = d + 40; V.nextPowerD = d + 60; } },
   get vis() { const V = R && R.vis; return V ? { id: V.id, d: Math.round(V.d), len: V.len, gi: V.gi, right: V.right, total: V.total, vGot: V.vGot, parts: V.verse.parts.length, boss: !!V.boss, bossDone: V.bossDone, bossK: +V.bossK.toFixed(2), finished: !!V.finished, journey: V.journey, wings: +(R.wings || 0).toFixed(2), py: +R.py.toFixed(2), lamps: !!V.W.lamps, chariots: chariots.filter(c => c.on).length, speed: +R.speed.toFixed(1) } : null; },
-  get visBook() { return R ? { book: R.visBook, skip: R.visSkip, portalD: visPortalD(), last: R.lastVision || null } : null; },
+  get visBook() { if (!R) return null; const k = nextSlot(); return { book: R.visBook || (k >= 0 && R.visSlots ? (R.visSlots[k].book || slotBook(k)) : null), skip: R.visSkip, portalD: visPortalD(Math.max(0, k)), next: k, slots: R.visSlots ? R.visSlots.map((s, i) => ({ ...s, at: visPortalD(i), km: +KM(visPortalD(i)).toFixed(2) })) : null, last: R.lastVision || null }; },
   get bible() { return bible(); },
   bibleMap() { openBibleMap(); },
   bookCard(id) { openBibleMap(); openBookCard(id); },
