@@ -22,7 +22,7 @@ const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;',
 const params = new URLSearchParams(location.search);
 const TIME_SCALE = clamp(+params.get('speed') || 1, 1, 8);
 const LITE = params.has('lite');
-const APP_VER = 'v14.0';   // shown on the title, pause and settings so a phone can tell which build it runs
+const APP_VER = 'v14.1';   // shown on the title, pause and settings so a phone can tell which build it runs
 const DEBUG = params.has('debug');
 const NOVIS = params.has('novision');   // v10 test switch: journey without the vision gate
 const AUTO = params.has('autopilot'), AUTO_MIX = params.get('autopilot') === 'mix', AUTO_FUN = AUTO;
@@ -2069,7 +2069,7 @@ window.addEventListener('keydown', e => {
 window.addEventListener('keyup', e => { keys[e.key] = false; });
 const ray = new THREE.Raycaster(), _ndc = new THREE.Vector2(), groundPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
 // swipe threshold scales with screen size (≈ 16–24 CSS px); a fast flick triggers even sooner
-let SWIPE = 20, SAME = 64; const swipeCalc = () => { const m = Math.min(innerWidth, innerHeight); SWIPE = clamp(Math.round(m * 0.05), 16, 24); SAME = clamp(Math.round(m * 0.17), 56, 90); }; swipeCalc(); window.addEventListener('resize', swipeCalc);
+let SWIPE = 20, SAME = 64; const swipeCalc = () => { const m = Math.min(innerWidth, innerHeight); SWIPE = clamp(Math.round(m * 0.06), 22, 28); SAME = clamp(Math.round(m * 0.17), 56, 90); }; swipeCalc(); window.addEventListener('resize', swipeCalc);
 const PASSIVE = { passive: true };
 canvas.addEventListener('pointerdown', e => {
   ensureAudio(); const t = performance.now();
@@ -2086,8 +2086,11 @@ function swipeCheck(e) {
   const sdt = Math.max(4, now - ptr.lt), vx = (x - ptr.lx) / sdt, vy = (y - ptr.ly) / sdt;   // px per ms
   ptr.lx = x; ptr.ly = y; ptr.lt = now;
   let dir = null;
-  if (ax > ay && (ax > SWIPE || (ax > 10 && Math.abs(vx) > 0.55))) dir = dx < 0 ? 'L' : 'R';
-  else if (ay > ax && (ay > SWIPE || (ay > 10 && Math.abs(vy) > 0.55))) dir = dy < 0 ? 'U' : 'D';
+  // v14 storm fix: a TAP (to jump debris) often rolls the thumb 10–15 px sideways. On phones, raw pointer updates arrive
+  // every 1–4 ms, so that roll measured as a fast 'flick' (>10 px at >0.55 px/ms) and changed lane by itself.
+  // A lane change now needs a clearly sideways move past the swipe distance (22–28 px), 1.5x more sideways than vertical.
+  if (ax > ay * 1.5 && ax > SWIPE) dir = dx < 0 ? 'L' : 'R';
+  else if (ay > ax * 1.2 && ay > SWIPE) dir = dy < 0 ? 'U' : 'D';
   if (!dir) return;
   if (dir === 'L') runMove(-1); else if (dir === 'R') runMove(1); else if (dir === 'U') runJump(); else runSlide();
   ptr.acted = true; ptr.dir = dir; ptr.x0 = ptr.ax = x; ptr.y0 = ptr.ay = y;
@@ -2109,7 +2112,7 @@ canvas.addEventListener('pointercancel', () => { if (K) K.joy = null; el$('joy')
 canvas.addEventListener('pointerup', e => {
   if (ptr && e.type === 'pointerup') { ptr.x = e.clientX; ptr.y = e.clientY; }
   if (ptr && !S.paused && !S.slowmo) {
-    const quick = performance.now() - ptr.t < 320 && Math.hypot(ptr.x - ptr.x0, ptr.y - ptr.y0) < 12;
+    const quick = performance.now() - ptr.t < 320 && Math.hypot(ptr.x - ptr.x0, ptr.y - ptr.y0) < 22;   // v14: a tap with a little thumb roll still jumps
     if (S.mode === 'run' && !ptr.acted && ptr.ok && quick) runJump();
     if (S.mode === 'camp' && K && quick) {
       _ndc.set(e.clientX / window.innerWidth * 2 - 1, -(e.clientY / window.innerHeight) * 2 + 1); ray.setFromCamera(_ndc, camera);
@@ -2740,6 +2743,7 @@ window.LR = {
   get unfair() { return R ? R.unfair || null : null; },
   get campPos() { return K ? { x: +K.x.toFixed(3), z: +K.z.toFixed(3), tx: K.tx } : null; },
   dark(k) { if (R) R.forceDark = k || 0; },
+  weather(m) { if (R) R.ev = { ...R.ev, mod: { ...R.ev.mod, ...(m || {}) } }; },   // v14 test hook: force a weather state (rain/fog/dusk)
   get acts() { return R ? { uiAgo: Math.round(performance.now() - UI_T), ...(R.acts || { move: 0, jump: 0, slide: 0, ramp: 0 }), lane: R.lane, py: +R.py.toFixed(2), sl: +R.sl.toFixed(2), wings: R.wings || 0, grind: !!R.grind } : null; },
   vision(id) { startVisionRun(id || 'genesis'); },
   visD(d) { if (R && R.vis) { const V = R.vis; if (V.boss && d < VIS_BOSS[0]) visBossEnd(false); V.d = d; while (V.gi < V.gates.length && V.gates[V.gi] < d - 2) V.gi++; R.gate = null; hideGateUI(); clearObs(); R.nextRow = 20; V.nextScrollD = d + 40; V.nextPowerD = d + 60; } },
