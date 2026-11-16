@@ -1,10 +1,26 @@
 // Props, vehicles and scenery built from merged toon geometry
+import { MODELS, vehicleGLB, setRider } from './models.js';
 import { THREE, P, G, merge, mergedMesh, VC, outline, toon, signTex, signMesh, makeHuman, randomLook, poseHuman, bakedHuman } from './toon.js';
 
 const rnd = (a, b) => a + Math.random() * (b - a);
 const pick = a => a[Math.floor(Math.random() * a.length)];
 
-export function danfo() {
+// v12: the 3D Artist's GLB danfo (toon-shaded, LOD) when loaded, plus the random LAGOS plate + rear slogan sticker
+const SLOGANS = ['NO KING AS GOD', 'GOD DEY', 'NO TELEPHONE TO HEAVEN', 'JESUS IS LORD', 'SMALL STOUT', 'EKO O NI BAJE'];
+const PLATES = ['KJA 246 XY', 'EKY 316 AA', 'LND 777 KJ', 'IKD 120 BB'];
+export function danfo(opts) {
+  if (MODELS.ready) {
+    const g = vehicleGLB('danfo', opts);
+    const plate = signMesh(signTex('LAGOS', pick(PLATES), '#ffffff', '#0a6b3c', 256, 96, true), 0.5, 0.19);
+    plate.position.set(0, 0.76, 2.345); g.add(plate);
+    const txt = signMesh(signTex(pick(SLOGANS), '', '#ffc400', '#111', 512, 96, false), 1.3, 0.2);
+    txt.position.set(0, 1.0, 2.33); g.add(txt);
+    Object.assign(g.userData, { len: 4.6, exhaust: [0.6, 0.45, 2.4] });
+    return g;
+  }
+  return danfoProc();
+}
+export function danfoProc() {
   const Y = '#ffc400', K = '#141414', W = '#2c4a6e';
   const parts = [
     P(G.box, Y, 0, 1.2, 0, 0, 0, 0, 2.1, 1.55, 4.6),
@@ -51,7 +67,15 @@ export function truck() {
   g.userData = { len: 8, exhaust: [0.9, 3.0, -2.2] };
   return g;
 }
-export function okada() {
+export function okada(opts) {
+  if (MODELS.ready) {
+    const g = vehicleGLB('okada', { paint: pick(['red', 'red', 'blue', 'green', 'black']), ...opts });
+    Object.assign(g.userData, { len: 2.2, exhaust: [0.2, 0.5, 1.0] });
+    return g;
+  }
+  return okadaProc();
+}
+export function okadaProc() {
   const K = '#141414', body = pick(['#c62828', '#1565c0', '#2e7d32', '#212121']);
   const parts = [
     P(G.wheel, K, 0, 0.42, -0.85, 0, 0, 0, 0.16, 0.84, 0.84), P(G.wheel, K, 0, 0.42, 0.85, 0, 0, 0, 0.18, 0.84, 0.84),
@@ -236,7 +260,7 @@ export function rampMesh(L, H, w = 2.1, col = '#ffb300') {
 }
 export function okadaRamp() {
   const g = new THREE.Group(); const r = rampMesh(3.2, 1.1, 2.2, '#e53935'); g.add(r);
-  const o = okada(); o.position.set(1.7, 0, -0.6); o.rotation.y = 0.5; o.scale.setScalar(0.85); g.add(o);
+  const o = okada({ static: true }); if (o.userData.glb) setRider(o, false); o.position.set(1.7, 0, -0.6); o.rotation.y = 0.5; o.scale.setScalar(0.85); g.add(o);
   return g;
 }
 export function railMesh(len) {
@@ -294,7 +318,7 @@ export function flyover() {
   const g = new THREE.Group(); g.add(mergedMesh(parts, 0.07, false));
   const s = signMesh(signTex('OJOTA INTERCHANGE', 'IKORODU RD · LAGOS–IBADAN EXPY', '#0a6b3c'), 9, 2); s.position.set(0, 10.4, 0.2); g.add(s);
   const back = new THREE.Mesh(new THREE.BoxGeometry(9.3, 2.3, 0.15), toon('#0a6b3c')); back.position.set(0, 10.4, 0.05); g.add(back);
-  for (let i = 0; i < 5; i++) { const v = pick([danfo, danfo, truck])(); v.rotation.y = Math.PI / 2 * (i % 2 ? 1 : -1); v.position.set(-38 + i * 17, 8.7, (i % 2 ? 2 : -2)); v.scale.setScalar(0.9); g.add(v); }
+  for (let i = 0; i < 5; i++) { const v = pick([danfo, danfo, truck])({ static: true, lod1: true }); v.rotation.y = Math.PI / 2 * (i % 2 ? 1 : -1); v.position.set(-38 + i * 17, 8.7, (i % 2 ? 2 : -2)); v.scale.setScalar(0.9); g.add(v); }
   return g;
 }
 export function textSprite(txt, size = 1.2) {

@@ -1,0 +1,23 @@
+<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Vehicle viewer</title>
+<style>html,body{margin:0;height:100%;background:#cfe8ff;overflow:hidden}#i{position:fixed;left:8px;top:8px;font:12px system-ui;background:#fff9;padding:4px 6px;border-radius:6px}</style></head>
+<body><div id="i">loading…</div><script type="module">
+// v12 test viewer: the in-game toon danfo + okada (GLB or ?procveh fallback). ?view=front|rear|side|top &tier=high|med|low
+import { THREE } from '../js/toon.js';
+import { MODELS, setVehTier } from '../js/models.js';
+const q = new URLSearchParams(location.search); setVehTier(q.get('tier') || 'high');
+const { danfo, okada } = await import('../js/props.js');
+const R = new THREE.WebGLRenderer({ antialias: true }); R.setPixelRatio(devicePixelRatio); R.setSize(innerWidth, innerHeight); R.shadowMap.enabled = true; document.body.appendChild(R.domElement);
+const S = new THREE.Scene(); S.background = new THREE.Color('#cfe8ff');
+S.add(new THREE.HemisphereLight(0xfff4e0, 0x8a7a6a, 1.6)); const sun = new THREE.DirectionalLight(0xffffff, 2.2); sun.position.set(6, 10, 7); sun.castShadow = true; sun.shadow.camera.left = sun.shadow.camera.bottom = -8; sun.shadow.camera.right = sun.shadow.camera.top = 8; S.add(sun);
+const ground = new THREE.Mesh(new THREE.PlaneGeometry(40, 40), new THREE.MeshToonMaterial({ color: '#6b6b70' })); ground.rotation.x = -Math.PI / 2; ground.receiveShadow = true; S.add(ground);
+for (const x of [-1.6, 1.6]) { const l = new THREE.Mesh(new THREE.PlaneGeometry(0.15, 40), new THREE.MeshBasicMaterial({ color: '#fff' })); l.rotation.x = -Math.PI / 2; l.position.set(x, 0.01, 0); S.add(l); }
+const d = danfo(), o = okada({ paint: q.get('paint') || 'red' }); d.position.x = -1.6 * (q.get('only') === 'okada' ? 99 : 1); o.position.x = 1.9; if (q.get('only') === 'danfo') o.visible = false;
+d.traverse(m => { if (m.isMesh && !m.userData.outline && !m.userData.noShadow) m.castShadow = true; }); o.traverse(m => { if (m.isMesh && !m.userData.outline && !m.userData.noShadow) m.castShadow = true; });
+S.add(d, o);
+const cam = new THREE.PerspectiveCamera(36, innerWidth / innerHeight, 0.1, 200);
+const V = { front: [-5.5, 3.2, -9], rear: [5, 3.6, 9.5], side: [11, 2.6, 0.5], top: [3, 9, 6], back: [0.2, 3, 11] }[q.get('view') || 'front'];
+cam.position.set(...V); cam.lookAt(0, 1.1, 0);
+R.render(S, cam); R.render(S, cam);
+document.getElementById('i').textContent = (MODELS.ready ? 'GLB' : 'procedural') + ' · calls ' + R.info.render.calls + ' · tris ' + R.info.render.triangles;
+window.done = true;
+</script></body></html>

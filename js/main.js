@@ -4,6 +4,7 @@ export const WATER_T = { value: 0 };
 import * as LK from './look.js';
 import { THREE, toon, VC, outline, P, G, merge, mergedMesh, canvasTex, signTex, signMesh, SOFT, CLOUD, Particles, makeHuman, poseHuman, randomLook, PLAYER_OUTFITS, SKINS, bakedHuman, stepBaked, setExpression, disposeHuman, setCharTier } from './toon.js';
 import { danfo, truck, okada, cones, pothole, hawker, palmGeo, treeGeo, building, billboard, stall, streetLightGeo, bridge, setBridgeSign, gateArch, lanternMesh, textSprite, rampMesh, okadaRamp, railMesh, barMesh, lowSign, beamMesh, cow, herder, flyover, roadProp } from './props.js';
+import { MODELS, setVehTier } from './models.js';
 import * as M from './meta.js';
 import * as C from './content.js';
 import * as BK from './books.js';
@@ -51,7 +52,7 @@ const QUALITY = {
 };
 const AUTO_TIER = detectTier();
 const pickTier = () => LITE ? 'low' : params.get('gfx') ? ({ high: 'high', balanced: 'med', battery: 'low' }[params.get('gfx')] || 'med') : SET.gfx === 'auto' ? AUTO_TIER : ({ high: 'high', balanced: 'med', battery: 'low' }[SET.gfx] || 'med');
-let TIER = pickTier(), Q = QUALITY[TIER]; setCharTier(TIER);
+let TIER = pickTier(), Q = QUALITY[TIER]; setCharTier(TIER); setVehTier(TIER);
 let PR = Q.prMax;
 renderer.setPixelRatio(PR);
 renderer.outputColorSpace = THREE.SRGBColorSpace;
@@ -454,9 +455,9 @@ const OBS = {
   okada: { make: okada, rel: 0.7, jump: false, len: 2.2, big: true },
   hawker: { make: hawker, rel: 1, jump: false, len: 0.9 },
   hawkerX: { make: hawker, rel: 1, jump: false, len: 0.9, cross: true },
-  danfoP: { make: danfo, rel: 1, jump: false, len: 4.6, surf: 2.08, big: true, parked: true },
+  danfoP: { make: () => danfo({ static: true }), rel: 1, jump: false, len: 4.6, surf: 2.08, big: true, parked: true },
   truckP: { make: truck, rel: 1, jump: false, len: 8, surf: 3.45, big: true, parked: true },
-  danfoR: { make: () => withRamp(danfo(), 4.6, 5.2, 2.08), rel: 1, jump: false, len: 4.6, surf: 2.08, ramp: 5.2, big: true, parked: true },
+  danfoR: { make: () => withRamp(danfo({ static: true }), 4.6, 5.2, 2.08), rel: 1, jump: false, len: 4.6, surf: 2.08, ramp: 5.2, big: true, parked: true },
   truckR: { make: () => withRamp(truck(), 8, 7.5, 3.45), rel: 1, jump: false, len: 8, surf: 3.45, ramp: 7.5, big: true, parked: true },
   kramp: { make: okadaRamp, rel: 1, jump: false, len: 0.2, surf: 1.1, ramp: 3.2, launch: true },
   rail: { make: null, rel: 1, jump: false, len: 30, surf: 0.85, ramp: 2.2, grind: true },
@@ -476,7 +477,7 @@ function spawnObs(type, lane, z, len) {
   let obj = freeObs[key].pop();
   if (!obj) {
     obj = type === 'rail' ? railMesh(len) : D.make();
-    if (type !== 'pothole' && type !== 'rail') { obj.traverse(o => { if (o.isMesh && !o.userData.outline) o.castShadow = true; }); if (!D.slide && type !== 'kramp') addBlob(obj, type === 'cone' ? 1.6 : type.startsWith('hawker') ? 1.3 : 2.9, Math.max(1.4, D.len * 1.15)); }
+    if (type !== 'pothole' && type !== 'rail') { obj.traverse(o => { if (o.isMesh && !o.userData.outline && !o.userData.noShadow) o.castShadow = true; }); if (!D.slide && type !== 'kramp') addBlob(obj, type === 'cone' ? 1.6 : type.startsWith('hawker') ? 1.3 : 2.9, Math.max(1.4, D.len * 1.15)); }
   }
   obj.userData.tag = 'obs-' + type; obj.position.set(D.wide ? 0 : LANES[lane], 0, z); obj.rotation.set(0, 0, 0); RW.add(obj);
   if (obj.userData.bar) obj.userData.bar.position.y = 1.55;
@@ -1171,6 +1172,7 @@ function updateRun(dt) {
   for (let i = active.length - 1; i >= 0; i--) {
     const a = active[i]; a.obj.position.z += move * a.rel;
     if (a.type === 'okada') a.obj.position.x = LANES[a.lane] + Math.sin(S.t * 2 + i) * 0.25;
+    const wh = a.obj.userData.wheels; if (wh && wh.length && a.rel < 1) { const sp = R.speed * (1 - a.rel) * dt / a.obj.userData.wheelR; for (const w of wh) w.rotation.x -= sp; }   // v12: GLB wheels roll at the vehicle's road speed
     if (a.cross) { a.obj.position.x += a.vx * dt; if (Math.abs(a.obj.position.x) > 4.0) { a.vx *= -1; a.obj.position.x = clamp(a.obj.position.x, -4, 4); } a.lane = clamp(Math.round(a.obj.position.x / 3.2) + 1, 0, 2); a.obj.rotation.y = a.vx > 0 ? Math.PI / 2 : -Math.PI / 2; poseHuman(a.obj.userData.human, 'carry', dt, 1.2); }
     else if (a.type === 'hawker') poseHuman(a.obj.userData.human, 'carry', dt, 0.6);
     if (a.drop && a.obj.position.z > -60) { const b = a.obj.userData.bar; if (b.position.y > 1.55) { a.dropV += 30 * dt; b.position.y = Math.max(1.55, b.position.y - a.dropV * dt); if (b.position.y === 1.55) { a.drop = false; if (Math.abs(a.obj.position.z) < 60) { sfx.hit(); for (let k = 0; k < 8; k++) fx.emit(a.obj.position.x + rand(-1, 1), 1.5, a.obj.position.z, rand(-2, 2), rand(1, 3), 0, 0.5, 0.5, '#cfd8dc', 1); } } } }
@@ -1777,7 +1779,7 @@ function buildCamp() {
   const cp = swayInst(palmGeo(), pData.length, 0.06); writeInst(cp, pData); CW.add(cp); campInst.push([cp, pData, 2.2]);
   const lData = []; for (let z = 96; z > -64; z -= 20) lData.push({ x: 6.5, z, s: 1, r: 0 }, { x: -6.5, z: z - 10, s: 1, r: 0 });
   const cl = new THREE.InstancedMesh(streetLightGeo(), VC, lData.length); outline(cl, 0.05); writeInst(cl, lData); CW.add(cl);
-  for (const [x, z, r] of [[-22, 86, 0.2], [-30, 84, -0.1], [-38, 87, 0.15], [32, 92, 1.57]]) { const d = danfo(); d.position.set(x, 0, z); d.rotation.y = r; CW.add(d); colliders.push([x - 2.6, x + 2.6, z - 2.8, z + 2.8]); }
+  for (const [x, z, r] of [[-22, 86, 0.2], [-30, 84, -0.1], [-38, 87, 0.15], [32, 92, 1.57]]) { const d = danfo({ static: true }); d.position.set(x, 0, z); d.rotation.y = r; CW.add(d); colliders.push([x - 2.6, x + 2.6, z - 2.8, z + 2.8]); }
   const glow = new THREE.Sprite(new THREE.SpriteMaterial({ map: SOFT, color: 0xffd27a, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, fog: false })); glow.scale.set(70, 22, 1); glow.position.set(0, 6, -95); CW.add(glow);
 }
 const beacon = new THREE.Mesh(new THREE.CylinderGeometry(0.6, 0.6, 50, 12, 1, true), new THREE.MeshBasicMaterial({ color: 0xffd23f, transparent: true, opacity: 0.22, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide, fog: false }));
@@ -2042,7 +2044,7 @@ function enterTitle() {
   S.mode = 'title'; S.paused = false; S.shop = false; S.slowmo = false; S.dlgOpen = false; document.body.classList.remove('dlg-run'); RW.visible = true; CW.visible = false; hudMode(null); resetGround(); hide('shop'); setMoralNPC(null); clearObs(); orbs.forEach(o => o.on = false); hideOrbs();
   buildPlayer();
   player.root.position.set(0.6, 0, 0); player.root.visible = true; player.root.rotation.set(0, Math.PI, 0);
-  if (!titleDanfo) { titleDanfo = danfo(); titleDanfo.traverse(o => { if (o.isMesh && !o.userData.outline) o.castShadow = true; }); RW.add(titleDanfo); }
+  if (!titleDanfo) { titleDanfo = danfo(); titleDanfo.traverse(o => { if (o.isMesh && !o.userData.outline && !o.userData.noShadow) o.castShadow = true; }); RW.add(titleDanfo); }
   titleDanfo.visible = true; titleDanfo.position.set(-3.2, 0, 2.2);
   bridges.forEach(b => b.visible = false); roadGate.visible = false;
   setSky('day', 'day', 0); show('title');
@@ -2465,7 +2467,7 @@ function sceneryOutlines(on) {
   palms.children[0].visible = TIER !== 'low'; lamps.children[0].visible = TIER !== 'low';
 }
 function applyQuality(tier) {
-  TIER = tier; Q = QUALITY[tier]; setCharTier(tier);
+  TIER = tier; Q = QUALITY[tier]; setCharTier(tier); setVehTier(tier);
   if (renderer.shadowMap.enabled !== Q.shadows) { renderer.shadowMap.enabled = Q.shadows; sun.castShadow = Q.shadows; scene.traverse(o => { if (o.material) [].concat(o.material).forEach(m => m.needsUpdate = true); }); }
   if (sun.shadow.mapSize.x !== Q.shadowSize) { sun.shadow.mapSize.set(Q.shadowSize, Q.shadowSize); if (sun.shadow.map) { sun.shadow.map.dispose(); sun.shadow.map = null; } }
   sceneryOutlines(Q.sceneryOutlines);
@@ -2500,6 +2502,7 @@ function loop(now) {
   S.t += dt;
   dynRes(frameMs);
   if (S.slowmo && S.mode === 'run') dt *= 0.04;
+  if (S.freeze && S.mode === 'run') dt = 0;   // v12 test hook: hold the world still for screenshots
   if (S.tutSlow && S.mode === 'run' && !S.paused) dt *= S.tutSlow;
   const steps = Math.max(1, Math.ceil(dt / (1 / 50)));
   for (let i = 0; i < steps; i++) {
@@ -2534,6 +2537,7 @@ window.LR = {
   get q() { return { tier: TIER, auto: AUTO_TIER, pr: PR, shadows: renderer.shadowMap.enabled, gpu: GPU, target: Math.round(1000 / DYN.target) }; },
   setTier(t) { applyQuality(t); },
   playerBox() { const b = new THREE.Box3().setFromObject(player.root); let x0 = 1e9, x1 = -1e9, y0 = 1e9, y1 = -1e9; for (let i = 0; i < 8; i++) { const v = new THREE.Vector3(i & 1 ? b.max.x : b.min.x, i & 2 ? b.max.y : b.min.y, i & 4 ? b.max.z : b.min.z).project(camera); x0 = Math.min(x0, v.x); x1 = Math.max(x1, v.x); y0 = Math.min(y0, v.y); y1 = Math.max(y1, v.y); } return { left: (x0 + 1) / 2, right: (x1 + 1) / 2, top: (1 - y1) / 2, bottom: (1 - y0) / 2, h: (y1 - y0) / 2 }; },
+  get veh() { return { ready: MODELS.ready, err: MODELS.err, ms: MODELS.ms }; },
   get state() { return { mode: S.mode, paused: S.paused, score: S.score, lantern: S.lantern, chapter: save && save.chapter, stop: R && R.stopIdx, dist: R && R.dist, met: K && K.met, fps: perf.fps, calls: renderer.info.render.calls, tris: renderer.info.render.triangles, lowered: perf.lowered, tier: TIER, pr: PR }; },
   skipRun() { if (R) { R.dist = RUN_LEN - 3; R.stopIdx = C.STOPS.length - 1; R.moralIdx = 3; setMoralNPC(null); } },
   near(i) { if (!K) return; const h = K.enc[i]; K.x = h.root.position.x; K.z = h.root.position.z + 2.2; K.tx = null; },
@@ -2554,6 +2558,9 @@ window.LR = {
   give(n) { M.earn(n); },
   debugPx() { return R ? R.px : null; },
   god(on) { if (R) R.god = !!on; },
+  freeze(on) { S.freeze = !!on; },
+  spawn(t, lane, z) { if (!R || !OBS[t]) return null; const a = spawnObs(t, lane, z); return a.obj.userData.glb ? 'glb' : 'proc'; },
+  clearObs() { clearObs(); },
   get unfair() { return R ? R.unfair || null : null; },
   get campPos() { return K ? { x: +K.x.toFixed(3), z: +K.z.toFixed(3), tx: K.tx } : null; },
   dark(k) { if (R) R.forceDark = k || 0; },
