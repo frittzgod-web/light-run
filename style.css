@@ -595,3 +595,26 @@ body #modal.show ~ .celebrate i{font-size:22px}body #modal.show ~ .celebrate b{f
 #gateChip.show{transform:translate(-50%,0) scale(1);opacity:1}
 body.qon #gateChip{display:none}
 body:not(.inrun) #gateChip{display:none}
+/* v14.2 · nothing in the middle while running: one tiny chip at the top edge (same slot as the gate chip / hazard warning) */
+#runChip{position:fixed;left:50%;top:calc(186px + env(safe-area-inset-top));transform:translate(-50%,-6px) scale(.85);opacity:0;z-index:36;pointer-events:none;max-width:88vw;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12.5px;font-weight:900;color:#fff;background:rgba(20,14,6,.78);border:1.5px solid rgba(255,210,63,.85);border-radius:999px;padding:3px 11px;box-shadow:0 2px 8px rgba(0,0,0,.35);transition:transform .18s,opacity .18s}
+#runChip.show{opacity:1;transform:translate(-50%,0) scale(1)}
+#runChip.bad{border-color:#ff8a80;color:#ffd6d0}#runChip.big,#runChip.cel{color:#ffe38a}#runChip.fever{background:linear-gradient(90deg,rgba(255,61,0,.85),rgba(255,179,0,.85));border-color:#fff}
+#runChip.boss{background:rgba(40,20,70,.85);border-color:#ffd23f;color:#ffd23f}#runChip.zone{background:rgba(6,75,42,.85)}
+#runChip.dim{opacity:0}#runChip.dim.show{opacity:.85}
+body.rchip #gateChip{opacity:0}
+body:has(#gust.show) #runChip,body:has(#gust.show) #gateChip{opacity:0;transition:none}
+#gust{top:calc(186px + env(safe-area-inset-top))!important}
+body.qon #runChip{display:none}
+body.inrun:not(.vfin) #zoneCard,body.inrun:not(.vfin) #bossCard{display:none}
+body.inrun #pops{display:none}
+/* fever: a thin glow at the screen edges only, nothing over the road or runner */
+body.fever::after{box-shadow:inset 0 0 26px 4px rgba(255,170,30,.55)!important}
+body.fever.qon::after{box-shadow:inset 0 0 18px 2px rgba(255,170,30,.35)!important}
+/* lightning: a softer flash (the storm darkness is already an edge vignette) */
+@keyframes bolt{0%{opacity:.28}30%{opacity:.12}100%{opacity:0}}
+body:not(.inrun) #runChip{display:none}
+/* v14.2: results-screen celebration strip: icon + title on one line, details under it, never wider than the screen */
+body #modal.show ~ .celebrate{display:grid!important;grid-template-columns:auto 1fr;column-gap:8px;row-gap:0;width:min(92vw,380px);max-width:92vw}
+body #modal.show ~ .celebrate i{grid-row:1/3;align-self:center}
+body #modal.show ~ .celebrate b{font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;line-height:1.2}
+body #modal.show ~ .celebrate span{font-size:11px;line-height:1.25}

@@ -22,7 +22,7 @@ const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;',
 const params = new URLSearchParams(location.search);
 const TIME_SCALE = clamp(+params.get('speed') || 1, 1, 8);
 const LITE = params.has('lite');
-const APP_VER = 'v14.1';   // shown on the title, pause and settings so a phone can tell which build it runs
+const APP_VER = 'v14.2';   // shown on the title, pause and settings so a phone can tell which build it runs
 const DEBUG = params.has('debug');
 const NOVIS = params.has('novision');   // v10 test switch: journey without the vision gate
 const AUTO = params.has('autopilot'), AUTO_MIX = params.get('autopilot') === 'mix', AUTO_FUN = AUTO;
@@ -194,7 +194,24 @@ function buzz(ms, minGap = 0) { if (!SET.haptics || !navigator.vibrate) return; 
 const show = id => $('#' + id).classList.add('show');
 const hide = id => $('#' + id).classList.remove('show');
 let toastT = 0;
-function toast(msg, ms = 2200) { const t = $('#toast'); t.textContent = msg; t.classList.add('show'); clearTimeout(toastT); toastT = setTimeout(() => t.classList.remove('show'), ms); }
+/* v14.2 · NOTHING IN THE MIDDLE WHILE RUNNING. During active running every message becomes one tiny chip at the top
+   edge (one at a time, 1.5 s each, max 3 waiting; minor ones replace each other). Big celebrations (level up, badges,
+   weekly, boss verses) wait for the results screen. */
+const running = () => S.mode === 'run' && !!R && !S.paused && !S.slowmo;
+const RC = { q: [], on: false, t: 0, n: 0 };
+function runChip(txt, cls = '', pri = 0) {
+  if (!txt) return; RC.n++;
+  if (RC.on) { if (RC.q.some(x => x[0] === txt)) return; if (!pri) RC.q = RC.q.filter(x => x[2]); if (RC.q.length < 3) RC.q.push([txt, cls, pri]); return; }
+  showRunChip(txt, cls);
+}
+function showRunChip(txt, cls) {
+  const e = $('#runChip'); if (!e) return; RC.on = true; e.className = 'show ' + cls; e.textContent = txt; document.body.classList.add('rchip');
+  clearTimeout(RC.t); RC.t = setTimeout(() => { e.classList.remove('show'); document.body.classList.remove('rchip');
+    RC.t = setTimeout(() => { RC.on = false; const n = RC.q.shift(); if (n && running()) showRunChip(n[0], n[1]); else RC.q = []; }, 220); }, 1500);
+}
+function clearRunChips() { RC.q = []; clearTimeout(RC.t); RC.on = false; const e = $('#runChip'); if (e) e.classList.remove('show'); document.body.classList.remove('rchip'); }
+const chipTxt = html => { const d = document.createElement('div'); d.innerHTML = html; const i = d.querySelector('i'), b = d.querySelector('b'); return ((i ? i.textContent + ' ' : '') + (b ? b.textContent : d.textContent)).trim(); };
+function toast(msg, ms = 2200) { if (running()) { runChip(msg, 'note', 1); return; } const t = $('#toast'); t.textContent = msg; t.classList.add('show'); clearTimeout(toastT); toastT = setTimeout(() => t.classList.remove('show'), ms); }
 document.querySelectorAll('[data-close]').forEach(b => b.addEventListener('click', () => { sfx.tap(); hide(b.dataset.close); }));
 const verseHTML = v => `<div class="verse">“${esc(v[0])}”<b>${esc(v[1])} (KJV)</b></div>`;
 
@@ -740,14 +757,22 @@ function enterZone(i) {
   if (z.id === 'bridge') dstat('reachBridge', 1, 'max');
   if (z.id === 'mowe') dstat('reachMowe', 1, 'max');
 }
+function bossCardRun(el) {   // v14.2: mid-run the boss banner is a top chip; a boss win's verse waits for the results screen
+  if (!running()) return false;
+  const win = el.classList.contains('win'), b = el.querySelector('b');
+  runChip(win ? '🏆 ' + b.textContent : chipTxt(el.innerHTML), 'boss', 1);
+  if (win) DEFER.push([`<i>🏆</i>${el.innerHTML.replace('<small>', '<span>').replace('</small>', '</span>')}`, 'badge']);
+  return true;
+}
 function zoneCard(t, sub, km, cls = '') {
+  if (running()) { runChip(`${cls === 'vision' ? '✨' : '📍'} ${t}${sub && cls !== 'vision' ? ' · ' + sub : ''}`, 'zone ' + cls, 1); return; }
   const el = $('#zoneCard'); el.className = cls; el.innerHTML = `<small>${esc(km)}</small><b>${esc(t)}</b><span>${esc(sub)}</span>`;
   void el.offsetWidth; el.classList.add('show'); clearTimeout(el._t); el._t = setTimeout(() => el.classList.remove('show'), 2300);
 }
 function bossStart(id) {
   const B = C.BOSSES[id]; R.boss = { id, crashes: 0, gustT: 3.5, boltT: 1.2, warn: null };
   clearTimeout($('#zoneCard')._t); $('#zoneCard').classList.remove('show');
-  const el = $('#bossCard'); el.className = 'boss ' + id; el.innerHTML = `<div class="bi">${B.icon}</div><b>${esc(B.title)}</b><span>${esc(B.sub)}</span>`; void el.offsetWidth; el.classList.add('show');
+  const el = $('#bossCard'); el.className = 'boss ' + id; el.innerHTML = `<div class="bi">${B.icon}</div><b>${esc(B.title)}</b><span>${esc(B.sub)}</span>`; void el.offsetWidth; if (!bossCardRun(el)) el.classList.add('show');
   clearTimeout(el._t); el._t = setTimeout(() => el.classList.remove('show'), 1900);
   sfx.boss(); shakeDOM(); document.body.classList.add('boss-' + id);
   const hb = $('#hBoss'); hb.className = 'boss-' + id; hb.querySelector('span').textContent = B.icon; hb.querySelector('em').textContent = B.title.replace(/^(STORM ON |)/, ''); setW(hb.querySelector('b'), 0);
@@ -760,7 +785,7 @@ function bossEnd(win) {
   const pts = b.crashes ? Math.round(B.reward / 2) : B.reward;
   S.score += pts; addLantern(10); R.earn += Math.round(pts / 5); sfx.good(); scorePop();
   if (b.id === 'storm') dstat('storm', 1, 'max'); if (b.id === 'goslow') dstat('goslow', 1, 'max'); if (b.id === 'market') PG.track('market', 1);
-  const el = $('#bossCard'); el.className = 'boss win'; el.innerHTML = `<b>${esc(B.winTitle)} +${pts}</b><span>“${esc(B.win[0])}”</span><small>${esc(B.win[1])} (KJV)</small>`; void el.offsetWidth; el.classList.add('show');
+  const el = $('#bossCard'); el.className = 'boss win'; el.innerHTML = `<b>${esc(B.winTitle)} +${pts}</b><span>“${esc(B.win[0])}”</span><small>${esc(B.win[1])} (KJV)</small>`; void el.offsetWidth; if (!bossCardRun(el)) el.classList.add('show');
   clearTimeout(el._t); el._t = setTimeout(() => el.classList.remove('show'), 3400);
   for (let k = 0; k < 40; k++) fx.emit(R.px + rand(-3, 3), rand(0.5, 4), rand(-4, 0), rand(-3, 3), rand(1, 5), rand(-2, 2), 1.0, 0.6, pick(['#fff3a0', '#ffd23f', '#ffffff']), 0.5);
 }
@@ -896,7 +921,6 @@ function enterVision(id, journey) {
   visExit.visible = false; visExit.userData.lab !== journey && (visExit.userData.lab = journey);
   document.body.classList.add('invis', 'vis-' + id);
   zoneCard(WD.name.toUpperCase(), WD.place, journey ? '✨ VISION GATE' : '📖 BIBLE VISION', 'vision');
-  setTimeout(() => { if (R && R.vis && R.vis.id === id && R.vis.d < 200) toast(WD.intro, 3400); }, 1300);
   rec.plays++; bibleSave(b);
   verseHUD(); powerHUD(); hudT = 0;
 }
@@ -970,7 +994,7 @@ function visSky(dt) {
 function visBossStart() {
   const V = R.vis, B = V.WD.boss; V.boss = { t: 2.4, warn: null, crashes: 0 };
   clearTimeout($('#zoneCard')._t); $('#zoneCard').classList.remove('show');
-  const el = $('#bossCard'); el.className = 'boss vis ' + B.id; el.innerHTML = `<div class="bi">${B.icon}</div><b>${esc(B.title)}</b><span>${esc(B.sub)}</span>`; void el.offsetWidth; el.classList.add('show');
+  const el = $('#bossCard'); el.className = 'boss vis ' + B.id; el.innerHTML = `<div class="bi">${B.icon}</div><b>${esc(B.title)}</b><span>${esc(B.sub)}</span>`; void el.offsetWidth; if (!bossCardRun(el)) el.classList.add('show');
   clearTimeout(el._t); el._t = setTimeout(() => el.classList.remove('show'), 2100);
   sfx.boss(); shakeDOM(); document.body.classList.add('boss-v-' + B.id);
   const hb = $('#hBoss'); hb.className = 'boss-' + B.id; hb.querySelector('span').textContent = B.icon; hb.querySelector('em').textContent = B.title; setW(hb.querySelector('b'), 0);
@@ -981,7 +1005,7 @@ function visBossEnd(win) {
   V.boss = null; if (!win) return;
   V.bossDone = true;
   const pts = b.crashes ? 120 : 250; S.score += pts; addLantern(10); R.earn += Math.round(pts / 5); sfx.good(); scorePop(); dstat('vboss', 1, 'max');
-  const el = $('#bossCard'); el.className = 'boss win'; el.innerHTML = `<b>${esc(B.winTitle)} +${pts}</b><span>“${esc(B.win[0])}”</span><small>${esc(B.win[1])} (KJV)</small>`; void el.offsetWidth; el.classList.add('show');
+  const el = $('#bossCard'); el.className = 'boss win'; el.innerHTML = `<b>${esc(B.winTitle)} +${pts}</b><span>“${esc(B.win[0])}”</span><small>${esc(B.win[1])} (KJV)</small>`; void el.offsetWidth; if (!bossCardRun(el)) el.classList.add('show');
   clearTimeout(el._t); el._t = setTimeout(() => el.classList.remove('show'), 3400);
   for (let k = 0; k < 40; k++) fx.emit(R.px + rand(-3, 3), rand(0.5, 4), rand(-4, 0), rand(-3, 3), rand(1, 5), rand(-2, 2), 1.0, 0.6, pick(['#fff3a0', '#ffd23f', '#ffffff']), 0.5);
   if (B.id === 'flood') { const rb = textSprite('🌈', 26); rb.position.set(0, 16, -90); rb.material.opacity = 0.9; scene.add(rb); setTimeout(() => scene.remove(rb), 4200); }
@@ -1451,6 +1475,7 @@ function loseCombo() { if (R.fever > 0 && !S.paused) return; if (R.combo >= 8) p
 function comboHUD() { const el = $('#hCombo'); if (R.combo >= 3) { el.classList.remove('hidden'); el.textContent = `x${comboMult()} · ${R.combo}`; el.classList.remove('pop'); void el.offsetWidth; el.classList.add('pop'); } else el.classList.add('hidden'); }
 function nearMiss(txt, pts, big) { const p = pts * comboMult(); S.score += p; addCombo(2); addLantern(0.5); popText(`${txt} +${p}`, big ? 'big' : ''); sfx.whoosh(); scorePop(); buzz(big ? 14 : 6); R.nearN = (R.nearN || 0) + 1; PG.track('nearmiss', 1); }
 function popText(txt, cls = '') {
+  if (running()) { runChip(txt, cls, /big|bad|fever/.test(cls) ? 1 : 0); return; }
   const el = document.createElement('div'); el.className = 'popt ' + cls; el.textContent = txt;
   el.style.left = (50 + rand(-18, 18)) + '%'; $('#pops').appendChild(el); if ($('#pops').children.length > 3) $('#pops').firstElementChild.remove(); setTimeout(() => el.remove(), 1100);
 }
@@ -2332,7 +2357,10 @@ function paintProgBar() {
   el.innerHTML = `<span class="pl">Lv <b>${L.lvl}</b></span><span class="pr">${L.rank.icon} ${esc(L.rank.name)}</span>${bar(L.xp, L.need, 'xp')}${n ? `<span class="pc">🎁 ${n}</span>` : ''}`;
 }
 let lvlQ = [];
+const DEFER = [];   // v14.2: celebrations earned mid-run, shown on the results screen
+setInterval(() => { if (DEFER.length && !running() && !S.dlgOpen && (S.mode !== 'run' || document.querySelector('#modal.show') || document.body.classList.contains('vfin'))) { const l = DEFER.splice(0); l.forEach(c => celebrate(c[0], c[1])); } }, 500);
 function celebrate(html, cls) {
+  if (running()) { DEFER.push([html, cls]); runChip(chipTxt(html), 'cel', 1); return; }
   const el = $('#celebrate'); lvlQ.push([html, cls]); if (el.classList.contains('show')) return;
   const next = () => { const it = lvlQ.shift(); if (!it) return; el.className = 'celebrate ' + it[1]; el.innerHTML = it[0]; void el.offsetWidth; el.classList.add('show'); setTimeout(() => { el.classList.remove('show'); setTimeout(next, 350); }, 2300); };
   next();
@@ -2753,6 +2781,9 @@ window.LR = {
   bibleMap() { openBibleMap(); },
   bookCard(id) { openBibleMap(); openBookCard(id); },
   combo(n) { if (R) addCombo(n); },
+  celebrateTest(t) { celebrate(`<i>⬆️</i><b>${t || 'LEVEL 9'}</b><span>test</span>`, 'lv'); },
+  toastTest(t) { toast(t || 'Test notice'); },
+  get chips() { return { n: RC.n, q: RC.q.length, on: RC.on, defer: DEFER.length }; },
   get v9() { return R ? { gentle: isGentle(), moralD: MORAL_AFTER.map((_, i) => +KM(moralDist(i)).toFixed(2)), moralIdx: R.moralIdx, nearN: R.nearN || 0, kick: R.kick || 0, dlg: !!S.dlgOpen, fov: +camera.fov.toFixed(1) } : null; },
   look(l, rot) { if (S.mode !== 'select') return false; selLook = LK.fixLook({ ...selLook, ...l }); selG = selLook.gender; if (rot != null) selRot = rot; selIdle = -999; paintSelect(); return true; },
   face(e) { if (player) setExpression(player, e, 3); },
