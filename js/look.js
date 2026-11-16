@@ -64,7 +64,7 @@ export function toHuman(l) {
     gender: l.gender, skin: l.skin, body: l.body, eyes: l.eyes, brows: l.brows, smile: l.smile, hair: l.hair, hairColor: l.hairColor,
     head: l.head === 'none' ? null : l.head, headColor: l.headColor,
     top: l.topColor, topTex: l.top === 'ankara' ? l.pattern : null, topStripe: l.top === 'striped' ? l.topColor2 : null, trim: l.top === 'kaftan' ? l.topColor2 : null,
-    bottom: skirt ? null : (l.bottom === 'jeans' ? (l.bottomColor === '#ffffff' ? '#3b5b9a' : l.bottomColor) : l.bottomColor), shorts: l.bottom === 'shorts',
+    bottom: skirt ? null : (l.bottom === 'jeans' ? (l.bottomColor === '#ffffff' ? '#3b5b9a' : l.bottomColor) : l.bottomColor), shorts: l.bottom === 'shorts', jeans: l.bottom === 'jeans',
     skirt: skirt ? (l.bottom === 'ankaraSkirt' ? 'tex' : l.bottomColor) : null, skirtTex: l.pattern, long: l.bottom === 'long' || l.bottom === 'ankaraSkirt',
     shoe: l.shoeColor, shoeStyle: l.shoes, acc: l.acc || {}, accColor: l.accColor, kid: false, old: false,
   };

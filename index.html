@@ -156,7 +156,7 @@
 <script>
   // Loading bar: stream the game files with progress (they land in the HTTP / offline cache), then start the module
   (function(){
-    var FILES = [['js/vendor/three.min.js', 750000], ['js/main.js', 175000], ['js/content.js', 70000], ['js/toon.js', 40000], ['js/props.js', 27000], ['js/meta.js', 11000], ['js/look.js', 6000]];
+    var FILES = [['js/vendor/three.min.js', 750000], ['js/main.js', 175000], ['js/content.js', 70000], ['js/toon.js', 30000], ['js/chibi.js', 36000], ['js/props.js', 27000], ['js/meta.js', 11000], ['js/look.js', 6000]];
     var total = 0, got = {}, fill = document.getElementById('ldFill'), txt = document.getElementById('ldTxt');
     FILES.forEach(function(f){ total += f[1]; got[f[0]] = 0; });
     window.__lrProgress = function(p, label){ p = Math.max(0, Math.min(1, p)); if (fill) fill.style.transform = 'scaleX(' + p.toFixed(3) + ')'; if (txt) txt.textContent = (label || 'Loading…') + ' ' + Math.round(p * 100) + '%'; };

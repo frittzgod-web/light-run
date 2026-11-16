@@ -2,7 +2,7 @@
 import { RIM, SWAY_T, swayMats, SHOP_OUTFITS, aoBake } from './toon.js';
 export const WATER_T = { value: 0 };
 import * as LK from './look.js';
-import { THREE, toon, VC, outline, P, G, merge, mergedMesh, canvasTex, signTex, signMesh, SOFT, CLOUD, Particles, makeHuman, poseHuman, randomLook, PLAYER_OUTFITS, SKINS, bakedHuman, stepBaked } from './toon.js';
+import { THREE, toon, VC, outline, P, G, merge, mergedMesh, canvasTex, signTex, signMesh, SOFT, CLOUD, Particles, makeHuman, poseHuman, randomLook, PLAYER_OUTFITS, SKINS, bakedHuman, stepBaked, setExpression, disposeHuman, setCharTier } from './toon.js';
 import { danfo, truck, okada, cones, pothole, hawker, palmGeo, treeGeo, building, billboard, stall, streetLightGeo, bridge, setBridgeSign, gateArch, lanternMesh, textSprite, rampMesh, okadaRamp, railMesh, barMesh, lowSign, beamMesh, cow, herder, flyover, roadProp } from './props.js';
 import * as M from './meta.js';
 import * as C from './content.js';
@@ -46,7 +46,7 @@ const QUALITY = {
 };
 const AUTO_TIER = detectTier();
 const pickTier = () => LITE ? 'low' : params.get('gfx') ? ({ high: 'high', balanced: 'med', battery: 'low' }[params.get('gfx')] || 'med') : SET.gfx === 'auto' ? AUTO_TIER : ({ high: 'high', balanced: 'med', battery: 'low' }[SET.gfx] || 'med');
-let TIER = pickTier(), Q = QUALITY[TIER];
+let TIER = pickTier(), Q = QUALITY[TIER]; setCharTier(TIER);
 let PR = Q.prMax;
 renderer.setPixelRatio(PR);
 renderer.outputColorSpace = THREE.SRGBColorSpace;
@@ -243,14 +243,14 @@ function nameTagSprite(name) {
 let nameTag = null;
 function setNameTag(name) {
   if (!player) return; if (nameTag) { nameTag.parent && nameTag.parent.remove(nameTag); nameTag.material.map.dispose(); nameTag.material.dispose(); nameTag = null; }
-  if (!name) return; nameTag = nameTagSprite(name); nameTag.position.y = 2.55; player.root.add(nameTag); nameTag.visible = S.mode !== 'run';
+  if (!name) return; nameTag = nameTagSprite(name); nameTag.position.y = player.topY + 0.45; player.root.add(nameTag); nameTag.visible = S.mode !== 'run';
 }
 function buildPlayer(sv = save || freshSave(), lant) {
   if (player && player.root.parent) player.root.parent.remove(player.root);
-  if (player) { player.root.traverse(o => { if (o.isMesh && o.geometry.userData.own) o.geometry.dispose(); }); }
-  player = makeHuman(lookFromSave(sv), true);
+  if (player) { player.root.traverse(o => { if (o.isMesh && o.geometry.userData.own) o.geometry.dispose(); }); if (player.mesh && player.mesh.skeleton) player.mesh.skeleton.dispose(); }
+  player = makeHuman(lookFromSave(sv), true); player.root.scale.setScalar(1.1);
   player.root.traverse(o => { if (o.isMesh && !o.userData.outline) o.castShadow = true; });
-  lantern = lanternMesh(LANTERN_KIND[lant || M.wallet().lantern] || 'hurricane'); lantern.position.set(0, -0.42, 0.05); player.R.el.add(lantern);
+  lantern = lanternMesh(LANTERN_KIND[lant || M.wallet().lantern] || 'hurricane'); lantern.position.set(0, -0.31, 0.03); lantern.scale.setScalar(0.85); player.R.hand.add(lantern);
   lanternLight = new THREE.PointLight(0xffd27a, 0, 9, 1.6); lantern.add(lanternLight);
   scene.add(player.root); player.root.visible = true; nameTag = null;
   setNameTag(sv.name && sv.name !== 'Pilgrim' ? sv.name : (localStorage.getItem('lr_name') || ''));
@@ -658,7 +658,7 @@ function setMoralNPC(m) {
   if (moralNPC) RW.remove(moralNPC.root);
   if (!m) { moralNPC = null; return; }
   moralNPC = makeHuman(randomLook(m.look), false);
-  const mk = textSprite('❗', 1.4); mk.position.y = 3.1; moralNPC.root.add(mk); moralNPC.mark = mk;
+  const mk = textSprite('❗', 1.4); mk.position.y = moralNPC.topY + 0.9; moralNPC.root.add(mk); moralNPC.mark = mk;
   moralNPC.root.position.set(6.6, 0, -999); RW.add(moralNPC.root);
 }
 const MORAL_AFTER = [1, 4];
@@ -829,7 +829,7 @@ function updateRun(dt) {
       o.z += move;
       if (R.magnet > 0 && o.z > -24 && o.z < 0.5) { o.x += (px - o.x) * Math.min(1, dt * 8); o.y += (R.py + 1 - o.y) * Math.min(1, dt * 8); }
       if (Math.abs(o.z) < 1.0 + move && Math.abs(o.x - px) < 1.3 && Math.abs(o.y - (R.py + 1.0)) < 1.4) {
-        o.on = false; S.orbs++; R.earn++; addCombo(1); S.score += 10 * comboMult(); addLantern(1.2); sfx.orb(); scorePop();
+        o.on = false; S.orbs++; R.earn++; addCombo(1); S.score += 10 * comboMult(); addLantern(1.2); sfx.orb(); scorePop(); setExpression(player, 'happy', 0.6);
         if (++R.orbBuf >= 10) { dstat('orbs', R.orbBuf); R.orbBuf = 0; }
         for (let k = 0; k < 6; k++) fx.emit(o.x, o.y, o.z, rand(-2, 2), rand(0, 3), rand(-1, 1), 0.5, 0.35, '#fff3a0', 0.5);
       }
@@ -882,7 +882,7 @@ function updateRun(dt) {
     else b.visible = false;
   }
   roadGate.visible = RUN_LEN - R.dist < 300; roadGate.position.z = -(RUN_LEN - R.dist) - 2;
-  if (moralNPC && moral) { moralNPC.root.position.z = -(moralD - R.dist); moralNPC.root.rotation.y = 0; poseHuman(moralNPC, 'wave', dt); moralNPC.mark.position.y = 3.1 + Math.sin(S.t * 6) * 0.15; }
+  if (moralNPC && moral) { moralNPC.root.position.z = -(moralD - R.dist); moralNPC.root.rotation.y = 0; poseHuman(moralNPC, 'wave', dt); moralNPC.mark.position.y = moralNPC.topY + 0.9 + Math.sin(S.t * 6) * 0.15; }
   const prog = clamp(R.dist / RUN_LEN, 0, 1);
   // sky: day → evening → dusk along the journey, storm on Long Bridge
   const stormK = R.boss && R.boss.id === 'storm' ? 1 : 0; R.stormK = (R.stormK || 0) + (stormK - (R.stormK || 0)) * Math.min(1, dt * 1.5);
@@ -986,6 +986,7 @@ const BIG_NAMES = { danfo: 'A danfo no gree brake!', truck: 'Trailer wahala!', o
 function onHit(a) {
   const big = !!a.big;
   if (R.fire > 0) { knock(a); S.score += 20; popText('🔥 Smashed through! +20'); sfx.hit(); for (let k = 0; k < 14; k++) fx.emit(R.px + rand(-1, 1), rand(0.5, 2), -1, rand(-4, 4), rand(1, 4), rand(-3, 0), 0.6, 0.7, '#ff8a3d', 1); return false; }
+  setExpression(player, 'ouch', 0.9);
   if (R.shield) {
     R.shield = false; R.inv = 1.2; knock(a); sfx.shield(); shakeDOM();
     for (let k = 0; k < 22; k++) fx.emit(R.px, 1.2, 0, rand(-4, 4), rand(-1, 4), rand(-3, 3), 0.6, 0.6, '#9be7ff', 0.5);
@@ -1024,7 +1025,7 @@ function updatePowers(dt) {
   }
 }
 function activatePower(k) {
-  const P0 = POWERS[k]; sfx.power(); scorePop(); buzz(15);
+  const P0 = POWERS[k]; sfx.power(); scorePop(); buzz(15); setExpression(player, 'happy', 1.0);
   if (k === 'fire') { R.fire = P0.dur; R.dark = 0; dstat('fire', 1, 'max'); }
   if (k === 'shield') { R.shield = true; R.shieldT = P0.dur; }
   if (k === 'lamp') R.magnet = P0.dur;
@@ -1347,7 +1348,7 @@ function startCamp() {
   S.mode = 'camp'; S.paused = false;
   RW.visible = false; CW.visible = true; clearObs(); fx.clear(); setMoralNPC(null);
   setSky('evening', 'evening', 0, 1);
-  if (K) K.all.forEach(n => { CW.remove(n.root); const b = n.root.userData.baked; if (b) b.geos.forEach(g => g.dispose()); if (n.head && n.head.geometry.userData.own) n.head.geometry.dispose(); });
+  if (K) K.all.forEach(n => { CW.remove(n.root); const b = n.root.userData.baked; if (b) b.geos.forEach(g => g.dispose()); if (n.mesh) disposeHuman(n); });
   K = { x: 0, z: 104, tx: null, tz: null, met: {}, quest: 0, all: [], enc: [], walkers: [], items: [], joy: null };
   const usedSpots = new Set();
   for (const e of S.plan.enc) {
@@ -1681,8 +1682,8 @@ function updateSelect(dt) {
   poseHuman(player, 'idle', dt);
   if (S.shop && S.shopTrail && S.shopTrail !== 't_none' && Math.random() < 0.6) { const t = S.shopTrail; const x = rand(-0.3, 0.3); if (t === 't_gold') fx.emit(x, 0.1, 0, 0, rand(0.3, 0.8), rand(1, 2), 0.8, 0.35, '#ffd23f', 0.6); else if (t === 't_rainbow') ['#ff1744', '#ff9100', '#ffea00', '#00e676', '#2979ff', '#d500f9'].forEach((c, i) => fx.emit(-0.5 + i * 0.2, 0.2, 0, 0, 0.1, 2, 0.8, 0.3, c, 0.2)); else fx.emit(rand(-0.6, 0.6), 1.4, -0.2, rand(-1, 1), rand(0.2, 0.8), 1.5, 0.8, 0.36, '#ffffff', 0.8); }
   if (S.shop && lantern && Math.random() < 0.4) { lantern.getWorldPosition(_pv); const L = M.shopItem(M.wallet().lantern); fx.emit(_pv.x, _pv.y, _pv.z, rand(-0.2, 0.2), rand(0.2, 0.6), 1.2, 0.7, 0.25, (L && L.trail) || '#ffd27a', 1); }
-  if (S.shop) { camera.position.lerp(_pv.set(0, 2.0, 6.8), Math.min(1, dt * 4)); camera.lookAt(0, -0.3, 0); }
-  else { camera.position.lerp(_pv.set(0, 1.7, 7.4), Math.min(1, dt * 5)); camera.lookAt(0, -0.95, 0); }
+  if (S.shop) { camera.position.lerp(_pv.set(0, 1.7, 5.6), Math.min(1, dt * 4)); camera.lookAt(0, -0.1, 0); }
+  else { camera.position.lerp(_pv.set(0, 1.4, 4.75), Math.min(1, dt * 5)); camera.lookAt(0, -0.22, 0); }
   sunFollow(0, 0); fx.update(dt, 0, 0); lanternHalo(0);
 }
 canvas.addEventListener('pointerdown', e => { if (S.mode === 'select' && !S.shop) { selDrag = { x: e.clientX, r: selRot }; selIdle = 0; } });
@@ -1998,7 +1999,7 @@ function sceneryOutlines(on) {
   palms.children[0].visible = TIER !== 'low'; lamps.children[0].visible = TIER !== 'low';
 }
 function applyQuality(tier) {
-  TIER = tier; Q = QUALITY[tier];
+  TIER = tier; Q = QUALITY[tier]; setCharTier(tier);
   if (renderer.shadowMap.enabled !== Q.shadows) { renderer.shadowMap.enabled = Q.shadows; sun.castShadow = Q.shadows; scene.traverse(o => { if (o.material) [].concat(o.material).forEach(m => m.needsUpdate = true); }); }
   if (sun.shadow.mapSize.x !== Q.shadowSize) { sun.shadow.mapSize.set(Q.shadowSize, Q.shadowSize); if (sun.shadow.map) { sun.shadow.map.dispose(); sun.shadow.map = null; } }
   sceneryOutlines(Q.sceneryOutlines);
@@ -2042,7 +2043,7 @@ function loop(now) {
     if (S.paused) break;
     if (S.mode === 'run') updateRun(d); else if (S.mode === 'camp') updateCamp(d);
   }
-  if (S.mode === 'intro') { poseHuman(player, 'idle', dt); camera.position.lerp(_pv.set(1.8, 2.0, -4.2), 0.06); camera.lookAt(0, 1.6, 0); sunFollow(0, 0); fx.update(dt, 0, 0); lanternHalo(0); }
+  if (S.mode === 'intro') { poseHuman(player, 'idle', dt); camera.position.lerp(_pv.set(1.6, 1.7, -3.6), 0.06); camera.lookAt(0, 1.3, 0); sunFollow(0, 0); fx.update(dt, 0, 0); lanternHalo(0); }
   musicTick(); SWAY_T.value = S.t; WATER_T.value = S.t;
   if (player && blobP) { blobP.position.set(player.root.position.x, 0.03, player.root.position.z); const k = 1 - Math.min(0.6, player.root.position.y * 0.3); blobP.scale.set(1.5 * k, 1.5 * k, 1); blobP.visible = player.root.visible && S.mode !== 'title'; }
   sky.position.copy(camera.position); clouds.position.set(camera.position.x, 0, camera.position.z); clouds.rotation.y += dt * 0.004;
@@ -2083,6 +2084,8 @@ window.LR = {
   get j() { return R ? { km: KM(R.dist), zone: zoneAt(KM(R.dist)).id, boss: R.boss && R.boss.id, bossDone: Object.keys(R.bossDone), py: R.py, onGround: R.onGround, sl: R.sl, grind: R.grind, grindM: R.grindM, roofs: R.roofs, slides: R.slides, speed: R.speed, lane: R.lane, burst: R.burst } : null; },
   get meta() { return { wallet: M.wallet(), daily: M.dailyState(), list: M.dailyFor().map(c => c.id), streak: M.streak(), best: M.bestKm(), room: M.myRoom() }; },
   give(n) { M.earn(n); },
+  look(l, rot) { if (S.mode !== 'select') return false; selLook = LK.fixLook({ ...selLook, ...l }); selG = selLook.gender; if (rot != null) selRot = rot; selIdle = -999; paintSelect(); return true; },
+  face(e) { if (player) setExpression(player, e, 3); },
   dbg() { // draw-call breakdown of visible meshes (debug)
     const out = {}; let n = 0;
     const fr = new THREE.Frustum().setFromProjectionMatrix(new THREE.Matrix4().multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse)), tri = {};

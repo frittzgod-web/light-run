@@ -61,7 +61,7 @@ export function okada() {
   ];
   const g = new THREE.Group(); g.add(mergedMesh(parts, 0.035));
   const rider = makeHuman(randomLook({ gender: 'm', cap: true }), false); poseHuman(rider, 'sit', 0);
-  rider.root.rotation.y = Math.PI; rider.root.position.set(0, 0.15, 0.2); g.add(rider.root);
+  rider.root.rotation.y = Math.PI; rider.root.position.set(0, 0.15 + 0.8 - rider.hipY, 0.2); g.add(rider.root);
   g.userData = { len: 2.2, exhaust: [0.2, 0.5, 1.0], rider };
   return g;
 }
@@ -84,13 +84,12 @@ export function pothole() {
   const g = new THREE.Group(); g.add(m); g.userData = { len: 1.6 }; return g;
 }
 export function hawker() {
-  const h = makeHuman(randomLook({ gender: Math.random() < 0.6 ? 'f' : 'm' }), false);
-  h.o.head = null;
+  const h = makeHuman({ ...randomLook({ gender: Math.random() < 0.6 ? 'f' : 'm' }), head: null, hair: pick(['short', 'cornrows', 'lowcut']) }, false);
   const g = new THREE.Group(); g.add(h.root);
   const goods = pick([['#d7a65a', '#c08a3e'], ['#ff9800', '#fb8c00'], ['#e53935', '#43a047']]);
   const parts = [P(G.cyl, '#bcaaa4', 0, 0, 0, 0, 0, 0, 1.1, 0.1, 1.1)];
   for (let i = 0; i < 7; i++) parts.push(P(G.sphLo, goods[i % 2], Math.cos(i) * 0.3, 0.12 + (i === 6 ? 0.12 : 0), Math.sin(i) * 0.3, 0, 0, 0, 0.3, 0.24, 0.3));
-  const tray = mergedMesh(parts, 0.02, false); tray.position.y = 2.32; g.add(tray);
+  const tray = mergedMesh(parts, 0.02, false); tray.position.y = h.topY - 0.02; g.add(tray);
   g.userData = { len: 0.9, human: h };
   return g;
 }
@@ -276,7 +275,7 @@ export function cow() {
 export function herder() {
   // baked into one mesh (staff included): 1 draw call instead of ~14
   return bakedHuman({ ...randomLook({ gender: 'm', cap: true }), top: pick(['#fff8e1', '#90caf9', '#a1887f']), topTex: null, headColor: '#c62828' }, 'idle', 1, h => {
-    const staff = mergedMesh([P(G.cyl6, '#6d4c41', 0, 0.9, 0, 0, 0, 0.12, 0.06, 2.1, 0.06)], 0, false); staff.position.set(0.45, 0, 0.2); h.root.add(staff);
+    const staff = mergedMesh([P(G.cyl6, '#6d4c41', 0, 0.9, 0, 0, 0, 0.12, 0.06, 2.1, 0.06)], 0, false); staff.scale.y = 0.85; staff.position.set(0.36, 0, 0.18); h.root.add(staff);
   });
 }
 // Ojota-style flyover crossing the expressway
