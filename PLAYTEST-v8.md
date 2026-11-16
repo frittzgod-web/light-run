@@ -101,3 +101,38 @@ All pass. Against v7, the same test reproduces the bug: `0 → 2` and `2 → 0`.
 **Needs a person**
 - A pastor or teacher should read CONTENT-REVIEW.md before wider release.
 - Check on a real low-end phone that it runs smoothly. Headless fps doesn't show this.
+
+## F. v11 (16 Nov 2026): the player is always in control, and questions are readable while running
+
+**Why the runner sometimes moved by itself (root causes, now fixed)**
+1. **Storm on Long Bridge (journey boss):** every few seconds a "wind gust" moved the runner one lane. Now the wind throws **debris into one lane**. A red strip flashes on that lane with a "💨 Debris in the … lane!" banner, the debris lands ahead, and you jump it or move. Your lane never changes on its own.
+2. **The Great Flood (Genesis boss):** waves also moved you a lane ("Carried by the wave"). Now a **wave rolls down one warned lane**, and you jump it or change lane.
+3. **Ghost taps:** a tap that began on a button, card or menu, or while the game was paused or a dialog was open, could finish on the game screen as a **jump**. Now only gestures that start on the game while it is running count, with a short quiet window after any UI tap.
+4. **Held keys:** holding ↑ or ↓ on a keyboard repeated jumps and slides. Now one press gives one action.
+5. **Leftover inputs after pausing:** a jump or slide queued before a pause no longer fires after you resume.
+6. **The test autopilot** only runs with an explicit `?autopilot` in the address and is never saved. When it is on, a red "TEST AUTOPILOT" badge shows.
+
+Still automatic, by design, and clearly visible: running onto a **ramp** (danfo/truck ramps, the okada launch ramp, grind rails) lifts you onto it; **angel wings** glide you above the road for 6 s. None of these ever changes your lane.
+
+**Questions you can read while running**
+- The question sits in a solid dark bar across the top at **18 px** (never under 16 px), up to 2 lines. One very long question was shortened.
+- An **answer strip** sits right under it: ◀ left | ▲ middle | ▶ right, in the gate colours. Your current lane is outlined and marked **YOU**.
+- **Labels on the gates** are bigger (15 px), outlined, kept between the HUD and the middle of the screen, and drawn above the 3D scene, so fog, darkness, water walls and sunsets can't hide them.
+- **Reading time:** the question appears about 6 s ahead of the gate at any speed (it was capped at about 4 s at top speed), and the run eases off about 14% while a question is up. It never stops.
+- **Calm window:** no obstacles spawn in the question window, anything already ahead is cleared, boss hazards pause, and roadside encounters wait. The boss bar, zone cards and small pop-ups are hidden while you read.
+- **Feedback:** "✅ Correct!" or "💛 Not quite. It was …" in the same top bar, with the reference. In the strip the right answer turns gold and your wrong pick is crossed out. It all stays at the top, off the road.
+
+**Other polish**
+- All tap targets are now at least 44 px: sound/pause, the Bible map ✕, shop and creator tabs, skin-tone swatches, the creator "more" arrow and slim buttons.
+- The sound button respects the right safe-area inset.
+- On menus, toasts now show at the bottom (one used to cover the Bible book card's heading).
+- The book card's "Enter the vision" button is near the top, not below seven verses.
+- Boss texts (storm, flood) and the gate tutorial tip now explain the new behaviour.
+- The camp no longer crashes if you reach it without a camp quest (a debug path).
+
+**Tests (headless Chrome, 390×844 and 360×740)**
+- `tests/noinput.js` runs with no input at all through 10 zones, 3 journey bosses, 5 road patterns (roofs, rails, launch ramp, jam, slide), 4 power-ups, 3 visions and their bosses, and the camp. It asserts the lane never changes and no jump or slide fires; only a launch ramp may lift you.
+- `tests/fair.js` runs the whole journey and all 3 visions with no input. It found no spot where all three lanes were blocked by something you can't jump, slide or ramp over.
+- `tests/qshots.js` takes before/after question screenshots in `screenshots3d/v11/`.
+- `tests/taps.js` audits tap targets.
+- `tests/hz.js` takes screenshots of the new storm/flood hazards.

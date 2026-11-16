@@ -112,7 +112,7 @@ export const QUIZ = [
   ['Who was the mother of Jesus?', ['Martha', 'Mary', 'Elizabeth', 'Ruth'], 1],
   ['Who was sold into Egypt by his brothers?', ['Joseph', 'Benjamin', 'Isaac', 'Jacob'], 0],
   ['What did God create on the first day?', ['Animals', 'Light', 'Man', 'The sea'], 1],
-  ['Who was the strongest man in the Bible, whose strength was linked to his hair?', ['Samson', 'Goliath', 'Gideon', 'Saul'], 0],
+  ['Which strong man’s great strength was linked to his long hair?', ['Samson', 'Goliath', 'Gideon', 'Saul'], 0],
   ['Which disciple walked on water toward Jesus?', ['John', 'Andrew', 'Peter', 'James'], 2],
   ['Who climbed a sycamore tree to see Jesus?', ['Nicodemus', 'Zacchaeus', 'Bartimaeus', 'Matthew'], 1],
   ['What is the shortest verse in the KJV Bible?', ['"God is love."', '"Jesus wept."', '"Pray always."', '"Rejoice evermore."'], 1],
@@ -640,7 +640,7 @@ export const ZONES = [
   { id: 'final', name: 'The Final Stretch', sub: 'Redemption City is near!', km: 39.2, traffic: 1.25, grass: '#6cc23d' },
 ];
 export const BOSSES = {
-  storm: { km0: 10.7, km1: 14.2, icon: '⛈️', title: 'STORM ON LONG BRIDGE', sub: 'Wind, rain and darkness. Hold on!', reward: 500, win: ['And he arose, and rebuked the wind, and said unto the sea, Peace, be still. And the wind ceased, and there was a great calm.', 'Mark 4:39'], winTitle: '🕊️ Peace, be still!' },
+  storm: { km0: 10.7, km1: 14.2, icon: '⛈️', title: 'STORM ON LONG BRIDGE', sub: 'Wind flings debris into a lane: watch the red strip, then jump or move!', reward: 500, win: ['And he arose, and rebuked the wind, and said unto the sea, Peace, be still. And the wind ceased, and there was a great calm.', 'Mark 4:39'], winTitle: '🕊️ Peace, be still!' },
   goslow: { km0: 28.5, km1: 30.6, icon: '🚗', title: 'IBAFO GO-SLOW', sub: 'Weave the jam · hop the danfo roofs!', reward: 400, win: ['I can do all things through Christ which strengtheneth me.', 'Philippians 4:13'], winTitle: '🙌 Through the go-slow!' },
   market: { km0: 36.5, km1: 38.9, icon: '🛒', title: 'MOWE MARKET RUSH', sub: 'Dodge hawkers · duck the awnings!', reward: 400, win: ['Let us run with patience the race that is set before us.', 'Hebrews 12:1'], winTitle: '🏃🏾 Market cleared!' },
 };

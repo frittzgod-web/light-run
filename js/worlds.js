@@ -166,6 +166,14 @@ function chariotWreck() {
   for (let i = 0; i < 4; i++) p.push(P(G.sphLo, pick(['#2e8b57', '#ff7f6e', '#ffb3d1']), rnd(-0.6, 0.6), rnd(0.2, 1.1), 0.7, 0, 0, 0, 0.28, 0.28, 0.2));
   const g = new THREE.Group(); g.add(mergedMesh(p, 0.035)); return g;
 }
+// v11: Flood boss hazard: a low rolling wave in one telegraphed lane (jump it or change lane; it never moves you)
+function floodWave() {
+  const g = new THREE.Group();
+  const body = new THREE.Mesh(new THREE.CylinderGeometry(0.75, 0.75, 2.5, 14, 1, false, 0, Math.PI), new THREE.MeshStandardMaterial({ color: '#2fa8d8', transparent: true, opacity: 0.82, roughness: 0.25, emissive: '#0b4f74', emissiveIntensity: 0.35 }));
+  body.rotation.z = Math.PI / 2; body.rotation.y = Math.PI / 2; body.position.y = 0.05; body.scale.set(1, 1, 1.15); g.add(body);
+  const p = []; for (let i = 0; i < 9; i++) p.push(P(G.sphLo, i % 3 ? '#ffffff' : '#d8f4ff', -1.1 + i * 0.275, 0.78 + rnd(-0.05, 0.12), rnd(-0.15, 0.2), 0, 0, 0, 0.42, 0.3, 0.4));
+  g.add(mergedMesh(p, 0.02)); return g;
+}
 function dropStone() { const p = [P(G.cyl, '#dcbf8e', 0, 0.75, 0, 0, 0.3, 0, 1.4, 1.5, 1.4), P(G.box, '#c9a873', 0, 1.55, 0, 0, 0.3, 0, 1.6, 0.22, 1.6)]; for (let i = 0; i < 6; i++) { const a = i / 6 * 6.28; p.push(P(G.box, '#c2a273', Math.cos(a) * 0.68, 0.75, Math.sin(a) * 0.68, 0, -a, 0, 0.07, 1.4, 0.07)); } const g = new THREE.Group(); g.add(mergedMesh(p, 0.04)); return g; }
 export function chariotMesh() {
   const g = new THREE.Group();
@@ -194,8 +202,9 @@ export const VOBS = {
   vColumn: { make: fallenColumn, rel: 1, jump: true, len: 1.4, wide: true },
   vWreck: { make: chariotWreck, rel: 1, jump: false, len: 2.0, big: true, parked: true },
   vDrop: { make: dropStone, rel: 1, jump: false, len: 1.5 },
+  vWave: { make: floodWave, rel: 1, jump: true, len: 1.4 },
 };
-export const VOBS_NAMES = { vLion: 'You ran into a stone lion!', vLionS: 'You ran into a stone lion!', vPillar: 'A stone pillar stood in your way!', vPillarW: 'You hit a carved pillar on the seabed!', vWreck: 'You crashed into a sunken chariot!', chariot: "Pharaoh's chariot ran you down!" };
+export const VOBS_NAMES = { vLion: 'You ran into a stone lion!', vLionS: 'You ran into a stone lion!', vPillar: 'A stone pillar stood in your way!', vPillarW: 'You hit a carved pillar on the seabed!', vWreck: 'You crashed into a sunken chariot!', chariot: "Pharaoh's chariot ran you down!", vWave: 'A flood wave knocked you over!' };
 
 /* ---------- scrolling decor ---------- */
 class Decor {

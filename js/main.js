@@ -21,6 +21,8 @@ const TIME_SCALE = clamp(+params.get('speed') || 1, 1, 8);
 const LITE = params.has('lite');
 const NOVIS = params.has('novision');   // v10 test switch: journey without the vision gate
 const AUTO = params.has('autopilot'), AUTO_MIX = params.get('autopilot') === 'mix', AUTO_FUN = AUTO;
+// v11: autopilot is a test helper only (explicit ?autopilot in the address); it is never stored and always shows a badge
+if (AUTO) { const addB = () => { const d = document.createElement('div'); d.id = 'autoBadge'; d.textContent = 'TEST AUTOPILOT'; document.body.appendChild(d); }; document.readyState === 'loading' ? addEventListener('DOMContentLoaded', addB) : addB(); }
 
 /* ---------------- WebGL check ---------------- */
 function hasGL() { try { const c = document.createElement('canvas'); return !!(c.getContext('webgl2') || c.getContext('webgl')); } catch (e) { return false; } }
@@ -462,6 +464,9 @@ const OBS = {
   sign: { make: lowSign, rel: 1, slide: true, len: 0.4, over: 3.3 },
   beam: { make: beamMesh, rel: 1, slide: true, len: 0.8, over: 2.05, wide: true },
 };
+// v11: storm hazard: wind-blown roofing sheets + a crate land in one telegraphed lane (jump them or change lane)
+function debrisMesh() { const p = [P(G.box, '#9aa4ad', 0, 0.42, 0, 0.35, 0.3, 0.12, 2.1, 0.07, 1.2), P(G.box, '#7e8890', 0.15, 0.25, 0.3, -0.2, -0.4, 0.2, 1.7, 0.07, 1.0), P(G.box, '#a8743d', -0.6, 0.35, -0.2, 0, 0.5, 0, 0.7, 0.7, 0.7), P(G.box, '#8a5a2b', -0.6, 0.71, -0.2, 0, 0.5, 0, 0.74, 0.04, 0.74)]; for (let i = 0; i < 5; i++) p.push(P(G.box, '#c3ccd3', -0.8 + i * 0.4, 0.46, 0, 0.35, 0.3, 0.12, 0.05, 0.09, 1.2)); const g = new THREE.Group(); g.add(mergedMesh(p, 0.03)); return g; }
+OBS.debris = { make: debrisMesh, rel: 1, jump: true, len: 1.2 };
 Object.assign(OBS, VW.VOBS);   // v10: vision-world obstacles (lion statues, pillars, logs, arches, fallen columns…)
 function withRamp(v, len, L, H) { const r = rampMesh(L, H); r.position.z = len / 2; v.add(r); return v; }
 const freeObs = {}, active = [];
@@ -534,13 +539,14 @@ const GENTLE_KM = 3;
 function isGentle() { return !!R && !R.boss && !R.vis && KM(R.dist) < GENTLE_KM && (save.chapter === 1 || (+localStorage.getItem('lr_runs') || 0) < 3); }
 const airT = () => clamp(0.62 - (R.speed - 20) * 0.0022, 0.5, 0.62);
 const slideT = () => clamp(0.72 - (R.speed - 20) * 0.004, 0.5, 0.72);
-function runMove(d) { const n = clamp(R.lane + d, 0, 2); if (S.tut) tutAct(d < 0 ? 'left' : 'right'); if (n !== R.lane) { R.lane = n; R.moveT = R.t; sfx.tap(); buzz(8); if (R.grind) endGrind(); } }
-function runJump() {
+const act = k => { const A = R.acts || (R.acts = { move: 0, jump: 0, slide: 0, ramp: 0 }); A[k]++; };   // v11: every player action is counted (the no-input tests assert these stay 0)
+function runMove(d) { act('move'); const n = clamp(R.lane + d, 0, 2); if (S.tut) tutAct(d < 0 ? 'left' : 'right'); if (n !== R.lane) { R.lane = n; R.moveT = R.t; sfx.tap(); buzz(8); if (R.grind) endGrind(); } }
+function runJump() { act('jump');
   if (S.tut) tutAct('up');
   if (R.onGround || R.coyote > 0) { const T = airT(); R.g = 8 * JUMP_H / (T * T); R.vy = 4 * JUMP_H / T; R.onGround = false; R.coyote = 0; R.sl = 0; R.jbuf = 0; sfx.jump(); if (R.grind) endGrind(); }
   else R.jbuf = 0.2;     // buffered: jump the moment you land
 }
-function runSlide() {
+function runSlide() { act('slide');
   if (S.tut) tutAct('down');
   if (!R.onGround) { R.vy = Math.min(R.vy, -30); R.sbuf = 0.35; }   // slam down, then slide on landing
   else if (R.sl <= 0.1) { R.sl = slideT(); sfx.whoosh(); if (R.grind) endGrind(); }
@@ -551,10 +557,11 @@ function runSpeed() {
   return Math.min(MAX_SPEED, s0 * Math.min(1, 0.7 + R.t * 0.3) + (MAX_SPEED - s0) * Math.pow(p, 0.7));
 }
 function rowGap() { const T = Math.max(0.62, lerp(1.05, 0.66, clamp(R.dist / RUN_LEN, 0, 1)) / Math.sqrt(R.traffic * R.ev.mod.traffic)); return Math.max(16, R.speed * T); }
-const readDist = () => clamp(R.speed * 4.2, 120, 300);
+// v11: questions appear ~6 s ahead at any speed (≈7 s with the gentle question ease), never under 140 units
+const readDist = () => Math.max(140, R.speed * 5.8);
 function gateZone(arrive) {   // 2 = quiet, 1 = jumpables only, 0 = normal
   let z = 0;
-  for (const i of [R.stopIdx, R.stopIdx + 1]) { if (i >= C.STOPS.length - 1) continue; const gz = gateDist(i); if (arrive > gz - readDist() - 6 && arrive < stopDist(i) + 8) z = Math.max(z, arrive > gz - 70 ? 2 : 1); }
+  for (const i of [R.stopIdx, R.stopIdx + 1]) { if (i >= C.STOPS.length - 1) continue; const gz = gateDist(i); if (arrive > gz - readDist() - 30 && arrive < stopDist(i) + 8) z = 2; }   // v11: the whole question window is clear road (light only)
   return z;
 }
 const inGateZone = arrive => gateZone(arrive) > 0;
@@ -711,7 +718,7 @@ function bossStart(id) {
 }
 function bossEnd(win) {
   const b = R.boss; if (!b) return; const B = C.BOSSES[b.id];
-  document.body.classList.remove('boss-' + b.id); $('#gust').classList.remove('show'); $('#hBoss').className = 'hidden';
+  document.body.classList.remove('boss-' + b.id); $('#gust').classList.remove('show'); $('#hBoss').className = 'hidden'; laneWarn.visible = false; b.warn = null;
   R.boss = null; if (!win) return;
   R.bossDone[b.id] = true;
   const pts = b.crashes ? Math.round(B.reward / 2) : B.reward;
@@ -720,6 +727,25 @@ function bossEnd(win) {
   const el = $('#bossCard'); el.className = 'boss win'; el.innerHTML = `<b>${esc(B.winTitle)} +${pts}</b><span>“${esc(B.win[0])}”</span><small>${esc(B.win[1])} (KJV)</small>`; void el.offsetWidth; el.classList.add('show');
   clearTimeout(el._t); el._t = setTimeout(() => el.classList.remove('show'), 3400);
   for (let k = 0; k < 40; k++) fx.emit(R.px + rand(-3, 3), rand(0.5, 4), rand(-4, 0), rand(-3, 3), rand(1, 5), rand(-2, 2), 1.0, 0.6, pick(['#fff3a0', '#ffd23f', '#ffffff']), 0.5);
+}
+const LANE_NAMES = ['left', 'middle', 'right'];
+const qActive = () => !!(R && R.gate && R.gate.shown && !R.gate.done);
+// v11: a telegraphed lane hazard (storm debris, flood waves): warn strip + banner, then a jumpable obstacle lands in that lane ahead.
+// Nothing here ever changes the player's lane; no new hazard starts while a question is up.
+function laneHazard(b, dt, type, msg, warnT, gap) {
+  const g = $('#gust');
+  if (!b.warn && !qActive() && (b.gustT -= dt) <= 0) {
+    const lane = Math.random() < 0.6 ? R.lane : pick([0, 1, 2]); b.warn = { lane, t: warnT };
+    laneWarn.visible = true; laneWarn.position.set(LANES[lane], 0.05, -24); g.textContent = msg(lane); g.classList.add('show'); sfx.whoosh(); buzz(10);
+  }
+  if (b.warn) {
+    laneWarn.material.opacity = 0.36 + 0.22 * Math.sin(S.t * 20);
+    if ((b.warn.t -= dt) <= 0) {
+      const l = b.warn.lane, z = -Math.max(34, R.speed * 1.15);
+      if (!active.some(a => (a.wide || a.lane === l) && Math.abs(a.obj.position.z - z) < 8)) { const a = spawnObs(type, l, z); a.hazard = true; }
+      b.warn = null; b.gustT = rand(gap[0], gap[1]); laneWarn.visible = false; g.classList.remove('show');
+    }
+  }
 }
 function updateBoss(dt) {
   const km = KM(R.dist);
@@ -734,8 +760,8 @@ function updateBoss(dt) {
     R.dark = Math.max(R.dark, 0.6);
     if ((b.boltT -= dt) <= 0) { b.boltT = rand(3, 5.5); const f = $('#bolt'); f.classList.remove('on'); void f.offsetWidth; f.classList.add('on'); hemi.intensity = 3.2; setTimeout(() => sfx.thunder(), 180); }
     hemi.intensity += (PRESETS.storm.hemiI - hemi.intensity) * Math.min(1, dt * 6);
-    if (!b.warn && (b.gustT -= dt) <= 0) { const dir = R.lane === 0 ? 1 : R.lane === 2 ? -1 : pick([-1, 1]); b.warn = { dir, t: 0.9 }; const g = $('#gust'); g.textContent = dir > 0 ? '💨 Wind gust ➡️' : '⬅️ Wind gust 💨'; g.classList.add('show'); }
-    if (b.warn && (b.warn.t -= dt) <= 0) { const before = R.lane; runMove(b.warn.dir); if (R.lane !== before) { shakeDOM(); sfx.whoosh(); popText('💨 Pushed by the wind!', 'dim'); } b.warn = null; b.gustT = rand(3.2, 5.2); $('#gust').classList.remove('show'); }
+    // v11: the wind never moves the runner. It flings debris into one telegraphed lane: jump it or change lane.
+    laneHazard(b, dt, 'debris', l => `💨 Debris in the ${LANE_NAMES[l]} lane!`, 1.25, [3.2, 5.0]);
   }
 }
 function updateZoneFX(dt, km) {
@@ -802,7 +828,7 @@ function pickBookVerse(id, rec) { const vs = BK.WORLDS[id].verses, fresh = vs.fi
 function visSpeed() { const V = R.vis; return Math.min(MAX_SPEED, V.s0 + (V.d / V.len) * 9 + (V.boss ? 2 : 0)); }
 function visGateZone(arrive) {
   let z = 0; const V = R.vis, rd = readDist();
-  for (let i = V.gi; i < V.gates.length; i++) { const gd = V.gates[i]; if (arrive > gd - rd - 6 && arrive < gd + 8) z = Math.max(z, arrive > gd - 70 ? 2 : 1); }
+  for (let i = V.gi; i < V.gates.length; i++) { const gd = V.gates[i]; if (arrive > gd - rd - 30 && arrive < gd + 8) z = 2; }
   return z;
 }
 function enterVision(id, journey) {
@@ -862,7 +888,7 @@ function visGates(dt) {
     if (!R.gate || R.gate.vi !== gi) { R.gate = prepGate(100 + gi, V.quiz[gi]); R.gate.vi = gi; }
     const g = R.gate, gd = V.gates[gi] - V.d, rd = readDist();
     answerGate.visible = gd < rd + 60 && gd > -1.5; answerGate.position.z = -gd;
-    if (!g.shown && gd < rd) { g.shown = true; showGateQ(g); clearObs(a => a.obj.position.z < -40 && a.rel < 1); }
+    if (!g.shown && gd < rd) { g.shown = true; showGateQ(g); clearForQuestion(); }
     gateLanes.forEach((L, i) => { if (!g.done) L.curtain.material.opacity = 0.26 + 0.12 * Math.sin(S.t * 5 + i); else if (i === g.correctLane) L.curtain.material.opacity = 0.45 + 0.3 * Math.sin(S.t * 14); });
     if (!g.done && gd <= 0) {
       const ok = R.lane === g.correctLane; judgeGate(g); V.total++;
@@ -920,17 +946,18 @@ function visBoss(dt, move) {
   const g = $('#gust');
   if (B.id === 'flood') {
     for (let i = 0; i < 5; i++) fx.emit(R.px + rand(-14, 14), rand(7, 13), rand(-34, 4), rand(-3, -1), -30, 0, 0.45, 0.16, '#cfe8ff', 0);
-    if (!b.warn && (b.t -= dt) <= 0) { const dir = R.lane === 0 ? 1 : R.lane === 2 ? -1 : pick([-1, 1]); b.warn = { dir, t: 0.95 }; g.textContent = dir > 0 ? '🌊 A wave is coming ➡️' : '⬅️ A wave is coming 🌊'; g.classList.add('show'); }
-    if (b.warn && (b.warn.t -= dt) <= 0) { const before = R.lane; if (R.py < 1.2 && !(R.wings > 0)) runMove(b.warn.dir); if (R.lane !== before) { shakeDOM(); sfx.whoosh(); popText('🌊 Carried by the wave!', 'dim'); } else popText('🌊 Rode the wave!', ''); for (let k = 0; k < 20; k++) fx.emit(R.px - b.warn.dir * 4 + rand(-1, 1), rand(0.2, 1.2), rand(-3, 1), b.warn.dir * rand(3, 6), rand(1, 3), 0, 0.7, 0.6, '#e0f6ff', 1.2); b.warn = null; b.t = rand(3.2, 4.8); g.classList.remove('show'); }
+    // v11: waves never carry the runner: a wave rolls down one telegraphed lane (jump it or change lane)
+    if (b.gustT == null) b.gustT = b.t;
+    laneHazard(b, dt, 'vWave', l => `🌊 Wave in the ${LANE_NAMES[l]} lane!`, 1.15, [2.6, 4.0]);
   } else if (B.id === 'chariots') {
-    if (!b.warn && (b.t -= dt) <= 0) { const lane = Math.random() < 0.6 ? R.lane : pick([0, 1, 2]); b.warn = { lane, t: 1.3 }; laneWarn.visible = true; laneWarn.position.x = LANES[lane]; g.textContent = `🐎 Chariot behind you! Leave the ${['left', 'middle', 'right'][lane]} lane!`; g.classList.add('show'); sfx.whoosh(); buzz(12); }
+    if (!b.warn && !qActive() && (b.t -= dt) <= 0) { const lane = Math.random() < 0.6 ? R.lane : pick([0, 1, 2]); b.warn = { lane, t: 1.3 }; laneWarn.position.z = -6; laneWarn.visible = true; laneWarn.position.x = LANES[lane]; g.textContent = `🐎 Chariot behind you! Leave the ${['left', 'middle', 'right'][lane]} lane!`; g.classList.add('show'); sfx.whoosh(); buzz(12); }
     if (b.warn) {
       laneWarn.material.opacity = 0.28 + 0.22 * Math.sin(S.t * 22);
       if ((b.warn.t -= dt) <= 0) { const c = chariotFree(); c.on = true; c.hit = false; c.nm = false; c.lane = b.warn.lane; c.v = 34; c.obj.visible = true; c.obj.position.set(LANES[c.lane], 0, 15); sfx.thunder(); shakeDOM(); b.warn = null; b.t = rand(1.5, 2.5); laneWarn.visible = false; g.classList.remove('show'); }
     }
   } else if (B.id === 'collapse') {
     R.shake = Math.max(R.shake, 0.08);
-    if ((b.t -= dt) <= 0) {
+    if (!qActive() && (b.t -= dt) <= 0) {
       b.t = rand(1.2, 1.9); const l = Math.random() < 0.55 ? R.lane : pick([0, 1, 2]);
       if (!busyLane(l)) { const a = spawnObs('vDrop', l, -Math.max(36, R.speed * 1.45)); a.fallY = 17; a.obj.position.y = 17; a.blob = a.obj.children.find(c => c.material === blobMat); if (a.blob) a.blob.position.y = 0.03 - 17; }
       if (!b.told) { b.told = true; g.textContent = '⚠️ Watch the shadows: stones are falling!'; g.classList.add('show'); setTimeout(() => g.classList.remove('show'), 2200); }
@@ -1051,9 +1078,9 @@ function openBookCard(id) {
     <div class="vstars">${starsHTML(r.stars || 0)}</div>
     <div class="chips"><span class="chip">🏆 Best ${r.best || 0}</span><span class="chip">📜 Verses ${r.v.length}/${WD.verses.length}</span><span class="chip">📖 Questions ${qRight}/${WD.quiz.length}</span><span class="chip">▶ Played ${r.plays || 0}</span></div>
     <div class="bboss"><span>${WD.boss.icon}</span><div><b>${esc(WD.boss.title)}</b><small>${esc(WD.boss.sub)}</small></div></div>
+    <button class="btn primary" id="bkGo">▶ Enter the vision</button>
     <h3>📜 Verses from ${esc(WD.name)}</h3>
     ${WD.verses.map(v => r.v.includes(v.ref) ? `<div class="verse">“${esc(v.text)}”<b>${esc(v.ref)} (KJV)</b></div>` : `<div class="verse locked">🔒 ${esc(v.ref)} · collect its scrolls in the vision</div>`).join('')}
-    <button class="btn primary" id="bkGo">▶ Enter the vision</button>
     <button class="btn ghost" id="bkBack">← Bible map</button>`;
   el.scrollTop = 0;
   $('#bkGo').onclick = () => { sfx.good(); startVisionRun(id); };
@@ -1063,9 +1090,12 @@ function updateRun(dt) {
   const ch = save.chapter, ev = R.ev, V = R.vis;
   R.t += dt;
   if (R.stumble > 0) R.stumble -= dt;
+  if (R.forceDark) R.dark = Math.max(R.dark, R.forceDark);   // test hook (LR.dark): night-like darkness
   if (R.burst > 0) R.burst -= dt;
-  R.speed = Math.min(92, (V ? visSpeed() : runSpeed()) * (R.stumble > 0 ? 1 - 0.5 * (R.stumble / 0.9) : 1) * Math.min(1.38, (R.fire > 0 ? 1.3 : 1) * (R.burst > 0 ? 1.25 : 1)));
+  R.qk = (R.qk || 0) + ((qActive() ? 1 : 0) - (R.qk || 0)) * Math.min(1, dt * 1.5);   // v11: ease off ~14% while reading (never a stop)
+  R.speed = (1 - 0.14 * R.qk) * Math.min(92, (V ? visSpeed() : runSpeed()) * (R.stumble > 0 ? 1 - 0.5 * (R.stumble / 0.9) : 1) * Math.min(1.38, (R.fire > 0 ? 1.3 : 1) * (R.burst > 0 ? 1.25 : 1)));
   if (AUTO) autoSteer(dt);
+  if (FAIR_CHECK && (R.fairT = (R.fairT || 0) - dt) <= 0) { R.fairT = 0.25; fairScan(); }
   updatePowers(dt);
   const move = R.speed * dt; if (V) V.d += move; else R.dist += move;
   const km = KM(R.dist);
@@ -1082,7 +1112,7 @@ function updateRun(dt) {
     if (gy <= R.py + 1.25 && gy >= R.py - 0.08) R.py = gy;
     else if (gy < R.py - 0.08) {
       R.onGround = false; R.coyote = 0.09;
-      if (R.surfA && R.surfA.launch) { R.vy = 17; R.g = 50; R.burst = 2.2; R.coyote = 0; const p = 30 * comboMult(); S.score += p; addCombo(3); popText(`🚀 Okada ramp boost! +${p}`, 'big'); sfx.power(); for (let k = 0; k < 18; k++) fx.emit(R.px + rand(-0.6, 0.6), R.py, 0.5, rand(-2, 2), rand(0, 2), rand(1, 4), 0.5, 0.6, '#ffb74d', 1); }
+      if (R.surfA && R.surfA.launch) { act('ramp'); R.vy = 17; R.g = 50; R.burst = 2.2; R.coyote = 0; const p = 30 * comboMult(); S.score += p; addCombo(3); popText(`🚀 Okada ramp boost! +${p}`, 'big'); sfx.power(); for (let k = 0; k < 18; k++) fx.emit(R.px + rand(-0.6, 0.6), R.py, 0.5, rand(-2, 2), rand(0, 2), rand(1, 4), 0.5, 0.6, '#ffb74d', 1); }
       else R.vy = 0;
     }
   }
@@ -1211,7 +1241,7 @@ function updateRun(dt) {
     const g = R.gate, gd = gateDist(gi) - R.dist, rd = readDist();
     answerGate.visible = gd < rd + 60 && gd > -1.5; answerGate.position.z = -gd;
     if (!g.called && gd < rd + 40) { g.called = true; toast(`🚌 “${C.STOPS[gi].replace(/ \(.*\)/, '')}! ${C.STOPS[gi].replace(/ \(.*\)/, '')}! Enter with your change!”`, 1800); }
-    if (!g.shown && gd < rd) { g.shown = true; showGateQ(g); clearObs(a => a.obj.position.z < -40 && a.rel < 1); }
+    if (!g.shown && gd < rd) { g.shown = true; showGateQ(g); clearForQuestion(); }
     gateLanes.forEach((L, i) => { if (!g.done) L.curtain.material.opacity = 0.26 + 0.12 * Math.sin(S.t * 5 + i); else if (i === g.correctLane) L.curtain.material.opacity = 0.45 + 0.3 * Math.sin(S.t * 14); });
     if (!g.done && gd <= 0) judgeGate(g);
     if (g.shown && !g.done) placeGateLabels();
@@ -1252,7 +1282,7 @@ function updateRun(dt) {
   sunFollow(R.px, 0);
   fx.update(dt, R.speed, 0);
   if (V) { if (V.d >= V.len) finishVision(); else hud(prog); return; }
-  if (moral && R.dist >= moralD - 1 && !R.boss && !bossWindow(R.dist)) {
+  if (moral && R.dist >= moralD - 1 && !R.boss && !bossWindow(R.dist) && !qActive() && !inGateZone(R.dist + 40)) {
     R.moralIdx++; clearObs(a => a.obj.position.z > -45); settleRunner();
     openDialog(moral, true, () => { R.inv = 1.2; setMoralNPC(S.plan.road[R.moralIdx]); });
     return;
@@ -1347,6 +1377,7 @@ function snapCP(dist, stopIdx, name) { return { dist, stopIdx, name, vGot: R.vGo
 function knock(a) { a.fly = 9; a.fx = (a.obj.position.x - R.px >= 0 ? 1 : -1) * 6; }
 const BIG_NAMES = { ...VW.VOBS_NAMES, danfo: 'A danfo no gree brake!', truck: 'Trailer wahala!', okada: 'An okada swerved into you!', danfoP: 'You ran into a parked danfo!', danfoR: 'You missed the ramp and hit the danfo!', truckP: 'A stalled trailer blocked the way!', truckR: 'You missed the ramp and hit the trailer!' };
 function onHit(a) {
+  if (R.god) return false;   // test hook (LR.god)
   const big = !!a.big;
   if (R.fire > 0) { knock(a); S.score += 20; popText('🔥 Smashed through! +20'); sfx.hit(); for (let k = 0; k < 14; k++) fx.emit(R.px + rand(-1, 1), rand(0.5, 2), -1, rand(-4, 4), rand(1, 4), rand(-3, 0), 0.6, 0.7, '#ff8a3d', 1); return false; }
   setExpression(player, 'ouch', 0.9);
@@ -1505,22 +1536,30 @@ function prepGate(idx, q = S.plan.quiz[idx % S.plan.quiz.length]) {
   return g;
 }
 // slim question bar: max 2 lines, font shrinks to fit
-function fitBar(el, max = 15, min = 11) { let f = max; el.style.fontSize = f + 'px'; while (f > min && el.scrollHeight > f * 1.25 * 2 + 2) { f -= 0.5; el.style.fontSize = f + 'px'; } }
+function fitBar(el, max = 18, min = 16) { let f = max; el.classList.remove('q3'); el.style.fontSize = f + 'px'; while (f > min && el.scrollHeight > f * 1.25 * 2 + 2) { f -= 0.5; el.style.fontSize = f + 'px'; } if (el.scrollHeight > f * 1.25 * 2 + 2) el.classList.add('q3'); }   // v11: 18→16px, 2 lines; a rare long one gets a 3rd line rather than being cut off
 const GL_ARROWS = ['◀', '▲', '▶'];
+function clearForQuestion() {   // v11: the question window is a calm stretch: nothing ahead but light
+  clearObs(a => a.obj.position.z < -28 || (a.rel < 1 && a.obj.position.z < -6));
+  const b = R.boss || (R.vis && R.vis.boss); if (b && b.warn) { b.warn = null; laneWarn.visible = false; $('#gust').classList.remove('show'); }
+}
 function showGateQ(g) {
   const hq = $('#hQ'); hq.classList.remove('hidden', 'ok', 'bad', 'slide'); void hq.offsetWidth; hq.classList.add('slide');
   $('#hQq').textContent = '📖 ' + g.q[0]; $('#hQo').textContent = ''; document.body.classList.add('qon'); fitBar($('#hQq'));
+  // v11: fixed answer strip, lane-aligned (left | middle | right), readable long before the gates arrive
+  document.querySelectorAll('#hQa b').forEach((el, i) => { el.className = 'a' + i; el.innerHTML = `<i>${GL_ARROWS[i]}</i><span>${esc(C.shortOpt(g.q[1][g.order[i]]))}</span>`; }); $('#hQa').classList.remove('hidden'); hQaLane = -1;
   document.querySelectorAll('#gLabels .gl').forEach((el, i) => { const t = C.shortOpt(g.q[1][g.order[i]]); el.innerHTML = `<i>${GL_ARROWS[i]}</i><span>${esc(t)}</span>`; el.classList.remove('ok', 'dim'); el.classList.toggle('long', t.length > 11); });
   $('#gLabels').classList.remove('hidden'); gateLanes.forEach(L => L.panel.visible = false); sfx.stop();
 }
 // DOM labels pinned above each 3D gate: readable at any distance, spread so they never overlap
 const _gv = new THREE.Vector3();
+let hQaLane = -1;
 function placeGateLabels() {
+  if (R && R.lane !== hQaLane) { hQaLane = R.lane; document.querySelectorAll('#hQa b').forEach((el, i) => el.classList.toggle('me', i === hQaLane)); }   // your lane is outlined in the strip
   const box = $('#gLabels'); if (box.classList.contains('hidden')) return;
   const W = innerWidth, H = innerHeight, top = $('#hud').getBoundingClientRect().bottom + 8, els = box.children, xs = [], ys = [];
   for (let i = 0; i < 3; i++) { gateLanes[i].g.getWorldPosition(_gv); _gv.y += 3.6; _gv.project(camera); xs.push((_gv.x + 1) / 2 * W); ys.push((1 - _gv.y) / 2 * H); }
   const sep = W * 0.325; xs[1] = clamp(xs[1], W / 2 - W * 0.02, W / 2 + W * 0.02); xs[0] = Math.min(xs[0], xs[1] - sep); xs[2] = Math.max(xs[2], xs[1] + sep);
-  for (let i = 0; i < 3; i++) { const x = clamp(xs[i], W * 0.165, W * 0.835), y = clamp(ys[i], top, H * 0.56); els[i].style.transform = `translate(${x.toFixed(1)}px,${y.toFixed(1)}px) translate(-50%,-100%)`; }
+  for (let i = 0; i < 3; i++) { const x = clamp(xs[i], W * 0.165, W * 0.835), y = clamp(ys[i], top + 34, H * 0.52); els[i].style.transform = `translate(${x.toFixed(1)}px,${y.toFixed(1)}px) translate(-50%,-100%)`; }
 }
 function hideGateUI(delay) { clearTimeout(hideGateUI.t); const f = () => { $('#hQ').classList.add('hidden'); document.body.classList.remove('qon'); $('#gLabels').classList.add('hidden'); }; if (delay) hideGateUI.t = setTimeout(f, delay); else f(); }
 function judgeGate(g) {
@@ -1538,6 +1577,7 @@ function judgeGate(g) {
     $('#hQq').textContent = `💛 Not quite. It was “${right}”`; $('#hQo').textContent = note; hq.classList.add('bad'); fitBar($('#hQq'));
   }
   document.querySelectorAll('#gLabels .gl').forEach((el, i) => el.classList.add(i === g.correctLane ? 'ok' : 'dim'));
+  document.querySelectorAll('#hQa b').forEach((el, i) => { el.classList.remove('me'); el.classList.add(i === g.correctLane ? 'ok' : 'dim'); if (i === R.lane && i !== g.correctLane) el.classList.add('mine'); });
   gateLanes.forEach(L => L.panel.visible = true);
   setTimeout(() => $('#gLabels').classList.add('hidden'), 450);
   clearTimeout(g.tm); g.tm = setTimeout(() => { if (S.mode === 'run' && R && (R.gate === g || !R.gate || !R.gate.shown)) hideGateUI(); }, 2400); // v8: also clear if the gate was reset (restart) so the result card can't stick
@@ -1547,6 +1587,15 @@ function passStop(idx) {
   if (b && b.userData.sign) R.signFlash = { mat: b.userData.sign.material, t: 1.2 };
   R.flash = 1.6; R.cp = snapCP(stopDist(idx) + 1, idx + 1, C.STOPS[idx]);
   for (let k = 0; k < 18; k++) fx.emit(rand(-6, 6), rand(5.5, 8), -2, rand(-2, 2), rand(0, 2), rand(-1, 1), 0.8, 0.6, '#fff3a0', 0.5);
+}
+// v11 test (?fair): is there ever a stretch of road where all three lanes are blocked by something you can't jump, slide or ramp over?
+const FAIR_CHECK = params.has('fair');
+function fairScan() {
+  const hard = a => !a.hit && !a.fly && !a.jump && !a.slide && !a.ramp && !a.grind && !a.launch && !a.hazard;
+  for (let z = -130; z < -4; z += 2) {
+    let m = 0; for (const a of active) { if (!hard(a)) continue; const az = a.obj.position.z; if (Math.abs(az - z) > a.len / 2 + 1.2) continue; if (a.wide) m = 7; else m |= 1 << a.lane; }
+    if (m === 7) { const key = Math.round((R.vis ? R.vis.d : R.dist) + (-z)); if (!R.unfair || Math.abs(R.unfair.at - key) > 30) { R.unfair = { at: key, n: ((R.unfair && R.unfair.n) || 0) + 1, list: [...((R.unfair && R.unfair.list) || []), active.filter(a => hard(a) && Math.abs(a.obj.position.z - z) < 6).map(a => a.type + '@' + a.lane).join(',')].slice(-12) }; } return; }
+  }
 }
 function autoSteer(dt) {   // test helper (?autopilot): steer to the right gate / scroll, slide, jump, use ramps and rails
   R.autoT -= dt;
@@ -1589,7 +1638,7 @@ function arriveGate() {
     <div class="chips"><span class="chip">✨ ${S.orbs} orbs</span><span class="chip">📖 ${S.quizRight}/${S.quizTotal} gates</span><span class="chip">🤲 ${S.helpedRun} helped</span><span class="chip dim">💥 ${S.hits} bumps</span></div>
     ${verseCard}
     <p>Lantern: <b>${Math.round(S.lantern)}%</b> · Score: <b>${S.score}</b></p><div class="meter"><i style="width:${S.lantern}%"></i></div>
-    <p>Now explore the camp. Talk to pilgrims with a ❗, find the ${q.n} ${q.item} <b>${esc(q.title.toLowerCase())}</b>, and head for the <b>Main Auditorium</b>. Follow the golden beacon ✨.</p><p class="small">📖 Optional: <b>Sister Funke</b> runs a Bible study at the Prayer Ground. Answer at your own pace for extra light.</p>
+    <p>Now explore the camp. Talk to pilgrims with a ❗, ${q ? `find the ${q.n} ${q.item} <b>${esc(q.title.toLowerCase())}</b>, ` : ''}and head for the <b>Main Auditorium</b>. Follow the golden beacon ✨.</p><p class="small">📖 Optional: <b>Sister Funke</b> runs a Bible study at the Prayer Ground. Answer at your own pace for extra light.</p>
     <button class="btn primary" id="gogo">Enter the camp ⛺</button>`;
   show('modal'); m.scrollTop = 0;
   $('#gogo').addEventListener('click', () => { sfx.good(); hide('modal'); startCamp(); });
@@ -1912,7 +1961,11 @@ function enterService() { K.joy = null; K.tx = null; openDialog(S.plan.door, fal
 /* =========================================================
    INPUT
    ========================================================= */
-let ptr = null;
+let ptr = null, UI_T = 0;
+// v11: any tap on the UI (buttons, cards, modals) marks a short quiet window so it can never leak into the run as a jump
+document.addEventListener('pointerdown', e => { if (e.target !== canvas) UI_T = performance.now(); }, true);
+document.addEventListener('pointerup', e => { if (e.target !== canvas) UI_T = performance.now(); }, true);
+document.addEventListener('click', e => { if (e.target !== canvas) UI_T = performance.now(); }, true);
 window.addEventListener('keydown', e => {
   keys[e.key] = true;
   if ((e.key === 'Escape' || e.key === 'p' || e.key === 'P') && (S.mode === 'run' || S.mode === 'camp')) { if (S.userPause) resumeGame(); else pauseGame(); return; }
@@ -1921,8 +1974,8 @@ window.addEventListener('keydown', e => {
   if (S.mode === 'run') {
     if (!e.repeat && ['ArrowLeft', 'a', 'A'].includes(e.key)) runMove(-1);
     if (!e.repeat && ['ArrowRight', 'd', 'D'].includes(e.key)) runMove(1);
-    if (['ArrowUp', 'w', 'W', ' '].includes(e.key)) { runJump(); e.preventDefault(); }
-    if (['ArrowDown', 's', 'S'].includes(e.key)) { runSlide(); e.preventDefault(); }
+    if (['ArrowUp', 'w', 'W', ' '].includes(e.key)) { if (!e.repeat) runJump(); e.preventDefault(); }
+    if (['ArrowDown', 's', 'S'].includes(e.key)) { if (!e.repeat) runSlide(); e.preventDefault(); }
   }
   if (S.mode === 'camp' && (e.key === 'e' || e.key === 'Enter') && promptFn) promptFn();
 });
@@ -1933,12 +1986,12 @@ let SWIPE = 20, SAME = 64; const swipeCalc = () => { const m = Math.min(innerWid
 const PASSIVE = { passive: true };
 canvas.addEventListener('pointerdown', e => {
   ensureAudio(); const t = performance.now();
-  ptr = { id: e.pointerId, x0: e.clientX, y0: e.clientY, x: e.clientX, y: e.clientY, lx: e.clientX, ly: e.clientY, lt: t, t, done: false };
+  ptr = { id: e.pointerId, x0: e.clientX, y0: e.clientY, x: e.clientX, y: e.clientY, lx: e.clientX, ly: e.clientY, lt: t, t, done: false, ok: S.mode !== 'run' || (!S.paused && !S.slowmo && t - UI_T > 350) };
   try { canvas.setPointerCapture(e.pointerId); } catch (er) {}
 }, PASSIVE);
 function swipeCheck(e) {
   if (!ptr || e.pointerId !== ptr.id || S.mode !== 'run' || S.paused || S.slowmo) return;
-  if (ptr.acted) return;   // v8: one gesture = exactly one action; a fresh touch is needed for the next lane
+  if (ptr.acted || !ptr.ok) return;   // v8: one gesture = exactly one action; a fresh touch is needed for the next lane
   const now = performance.now(), x = e.clientX, y = e.clientY, d = ptr.dir;
   // after a swipe, keep the origin at the furthest point reached so a turn-back fires at the normal threshold
   if (d === 'L' && x < ptr.x0) ptr.x0 = x; else if (d === 'R' && x > ptr.x0) ptr.x0 = x; else if (d === 'U' && y < ptr.y0) ptr.y0 = y; else if (d === 'D' && y > ptr.y0) ptr.y0 = y;
@@ -1970,7 +2023,7 @@ canvas.addEventListener('pointerup', e => {
   if (ptr && e.type === 'pointerup') { ptr.x = e.clientX; ptr.y = e.clientY; }
   if (ptr && !S.paused && !S.slowmo) {
     const quick = performance.now() - ptr.t < 320 && Math.hypot(ptr.x - ptr.x0, ptr.y - ptr.y0) < 12;
-    if (S.mode === 'run' && !ptr.acted && quick) runJump();
+    if (S.mode === 'run' && !ptr.acted && ptr.ok && quick) runJump();
     if (S.mode === 'camp' && K && quick) {
       _ndc.set(e.clientX / window.innerWidth * 2 - 1, -(e.clientY / window.innerHeight) * 2 + 1); ray.setFromCamera(_ndc, camera);
       const hit = new THREE.Vector3(); if (ray.ray.intersectPlane(groundPlane, hit)) { K.tx = hit.x; K.tz = hit.z; for (let i = 0; i < 6; i++) fx.emit(hit.x, 0.2, hit.z, Math.cos(i) * 2, 0.5, Math.sin(i) * 2, 0.4, 0.3, '#ffd23f', 1); }
@@ -2343,7 +2396,7 @@ function pauseGame(reason) {
   show('pause'); if (actx && actx.state === 'running') actx.suspend();
 }
 function resumeGame() {
-  if (!S.userPause) return; S.paused = S.userPause.prev; S.userPause = null; hide('pause'); hide('settings'); hide('howto');
+  if (!S.userPause) return; if (R) { R.jbuf = 0; R.sbuf = 0; } S.paused = S.userPause.prev; S.userPause = null; hide('pause'); hide('settings'); hide('howto');
   last = performance.now(); if (actx && soundOn) actx.resume();
   if (S.mode === 'run' && R && !S.paused) R.inv = Math.max(R.inv, 0.6);   // a moment of grace after resuming
 }
@@ -2363,7 +2416,7 @@ document.addEventListener('visibilitychange', () => {
 const TUT = [
   ['left', '👈', 'Swipe LEFT to change lane'], ['right', '👉', 'Swipe RIGHT to change lane'],
   ['up', '👆', 'Swipe UP (or tap) to jump', 'Jump potholes, cones and ramps'], ['down', '👇', 'Swipe DOWN to slide', 'Slide under barriers and low signs'],
-  ['gate', '⛩️', 'Answer gates', 'Question at the top → swipe into the right answer\'s gate!'],
+  ['gate', '⛩️', 'Answer gates', 'The question and its 3 answers (◀ left · ▲ middle · ▶ right) show at the top. Swipe into your answer\'s lane!'],
 ];
 const needTutorial = () => !AUTO && !params.has('notut') && !localStorage.getItem('lr3d_tut');
 let tutTimer = 0;
@@ -2500,6 +2553,11 @@ window.LR = {
   get meta() { return { wallet: M.wallet(), daily: M.dailyState(), list: M.dailyFor().map(c => c.id), streak: M.streak(), best: M.bestKm(), room: M.myRoom() }; },
   give(n) { M.earn(n); },
   debugPx() { return R ? R.px : null; },
+  god(on) { if (R) R.god = !!on; },
+  get unfair() { return R ? R.unfair || null : null; },
+  get campPos() { return K ? { x: +K.x.toFixed(3), z: +K.z.toFixed(3), tx: K.tx } : null; },
+  dark(k) { if (R) R.forceDark = k || 0; },
+  get acts() { return R ? { uiAgo: Math.round(performance.now() - UI_T), ...(R.acts || { move: 0, jump: 0, slide: 0, ramp: 0 }), lane: R.lane, py: +R.py.toFixed(2), sl: +R.sl.toFixed(2), wings: R.wings || 0, grind: !!R.grind } : null; },
   vision(id) { startVisionRun(id || 'genesis'); },
   visD(d) { if (R && R.vis) { const V = R.vis; if (V.boss && d < VIS_BOSS[0]) visBossEnd(false); V.d = d; while (V.gi < V.gates.length && V.gates[V.gi] < d - 2) V.gi++; R.gate = null; hideGateUI(); clearObs(); R.nextRow = 20; V.nextScrollD = d + 40; V.nextPowerD = d + 60; } },
   get vis() { const V = R && R.vis; return V ? { id: V.id, d: Math.round(V.d), len: V.len, gi: V.gi, right: V.right, total: V.total, vGot: V.vGot, parts: V.verse.parts.length, boss: !!V.boss, bossDone: V.bossDone, bossK: +V.bossK.toFixed(2), finished: !!V.finished, journey: V.journey, wings: +(R.wings || 0).toFixed(2), py: +R.py.toFixed(2), lamps: !!V.W.lamps, chariots: chariots.filter(c => c.on).length, speed: +R.speed.toFixed(1) } : null; },

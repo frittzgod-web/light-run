@@ -26,7 +26,7 @@ export const WORLDS = {
     id: 'genesis', name: 'Genesis', place: 'The Garden of Eden', icon: '🌳',
     tag: 'In the beginning: creation, the garden, Noah, Abraham and Joseph',
     intro: '🌳 A vision of Eden! “In the beginning God created the heaven and the earth.” Run the garden path!',
-    boss: { id: 'flood', icon: '🌧️', title: 'THE GREAT FLOOD', sub: 'The waters rise! Leap the floating logs and ride out the waves (Genesis 7)', winTitle: 'The rainbow appears!', win: ['I do set my bow in the cloud, and it shall be for a token of a covenant between me and the earth.', 'Genesis 9:13'] },
+    boss: { id: 'flood', icon: '🌧️', title: 'THE GREAT FLOOD', sub: 'The waters rise! Waves roll down one lane at a time: jump them or change lane (Genesis 7)', winTitle: 'The rainbow appears!', win: ['I do set my bow in the cloud, and it shall be for a token of a covenant between me and the earth.', 'Genesis 9:13'] },
     quiz: [
       ['What did God create on the first day?', ['Light', 'Animals', 'The sun'], 0, 'Genesis 1:3 · “Let there be light”', 'e'],
       ['On which day did God rest from all His work?', ['The seventh', 'The sixth', 'The first'], 0, 'Genesis 2:2', 'e'],
