@@ -273,7 +273,7 @@ function buildGenesis(tier) {
       if (Math.random() < 0.5) fx.emit(rnd(-14, 14), rnd(0.5, 5), rnd(-50, 2), rnd(-0.3, 0.3), rnd(0.1, 0.5), rnd(-0.3, 0.3), 1.6, rnd(0.12, 0.22), pick(['#fff3a0', '#ffe082', '#ffffff']), 0.2);
       for (const f of fountains) if (f.position.z > -90 && f.position.z < 10 && Math.random() < 0.7) fx.emit(f.position.x + rnd(-0.2, 0.2), 4.8, f.position.z, rnd(-1.2, 1.2), rnd(2, 3.5), rnd(-1.2, 1.2), 0.8, 0.22, '#d9f6ff', 0.6);
       palGlow.material.opacity = 0.75 * (1 - bossK * 0.75); pal.children[0].material.opacity = 0.78 - bossK * 0.35;
-      water.forEach(w => { w.visible = bossK > 0.01; w.position.y = -1.5 + bossK * 1.78 + Math.sin(t * 1.3) * 0.06; }); wt.offset.x = t * 0.05; wt.offset.y = t * 0.03;
+      water.forEach(w => { w.visible = this.floodWater !== false && bossK > 0.01; w.position.y = -1.5 + bossK * 1.78 + Math.sin(t * 1.3) * 0.06; }); wt.offset.x = t * 0.05; wt.offset.y = t * 0.03;
     },
   };
 }
@@ -320,8 +320,9 @@ function buildExodus(tier) {
   for (let i = 0; i < (tier === 'low' ? 4 : 7); i++) { const m = new THREE.Mesh(new THREE.PlaneGeometry(3.2, 26), new THREE.MeshBasicMaterial({ map: sht, transparent: true, opacity: 0.34, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide, fog: false })); m.rotation.set(0, rnd(-0.4, 0.4), rnd(-0.35, 0.35)); D.obj(m, rnd(-5, 5), 12, -20 - i * 47, 330); m.rotation.z = rnd(-0.3, 0.3); shafts.push(m); }
   D.obj(sunkCart(), 8.6, 3.2, -90, 330, 0.6); D.obj(sunkCart(), -8.8, 6.5, -250, 330, -0.8);
   for (let i = 0; i < 3; i++) { const w = new THREE.Mesh(new THREE.TorusGeometry(1.2, 0.18, 6, 18), toon('#b8892e')); w.rotation.set(0.4, 1.2, 0.3); D.obj(w, (i % 2 ? -1 : 1) * rnd(8, 9.5), rnd(1.5, 9), -40 - i * 100, 330); }
+  const seaParts = g.children.slice(2);   // v14.3: walls, fish, coral, light shafts... hidden for the dry-land episodes
   return {
-    group: g, decor: D, lamps: false,
+    group: g, decor: D, lamps: false, seaParts,
     obs: { dodge: ['vPillarW', 'vWreck'], jump: ['vCoral', 'vRock'], slide: ['vArch'], wide: ['vColumn'] },
     bossObs: { dodge: ['vPillarW'], jump: ['vCoral'], slide: ['vArch'], wide: [] },
     sky: { top: '#0d3e6e', mid: '#6fd8e8', bot: '#14707f', fog: '#4fb6c6', sun: '#fff0c0', sunI: 2.2, hemiS: '#cdf6ff', hemiG: '#3a6a6a', hemiI: 1.65, sunPos: [0.0, 0.9, -0.4] },
@@ -423,12 +424,66 @@ export function buildWorld(id, tier = 'high') {
   W.id = id; W.group.visible = false;
   // shared instanced sets (fruit on trees) follow their parent data; skip double-scrolling
   const D = W.decor; const own = D.sets.filter(s => !s.shared), shared = D.sets.filter(s => s.shared);
+  W.epGroups = {}; W.epTicks = [];
   W.move = (m, dt, t, fx, bossK) => {
     for (const s of own) { for (const d of s.data) { d.z += m; if (d.z > 26) d.z -= s.span; } D.write(s); }
     for (const s of shared) D.write(s);
-    for (const r of D.objs) { r.o.position.z += m; if (r.o.position.z > 40) r.o.position.z -= r.span; r.o.visible = r.o.position.z > -360; }
+    for (const r of D.objs) { r.o.position.z += m; if (r.o.position.z > 40) r.o.position.z -= r.span; r.o.visible = !r.o.userData.off && r.o.position.z > -360; }
     for (const [tx, k] of D.texs) tx.offset.y += m * k;
     W.tick(dt, t, fx, bossK);
+    for (const f of W.epTicks) f(dt, t, fx, bossK);
   };
   return W;
+}
+/* ---------- v14.3 · episode variations on a book's world kit: landmark props + sea on/off + flood water ---------- */
+function lmk(parts, th = 0.03) { const m = mergedMesh(parts, th); m.castShadow = true; return m; }
+const PYR = new THREE.ConeGeometry(0.5, 1, 4);
+const far = parts => new THREE.Mesh(merge(parts), new THREE.MeshBasicMaterial({ vertexColors: true, fog: false, transparent: true, opacity: 0.86 }));   // horizon silhouettes, never fogged out
+const LM = {
+  lifeTree: () => { const g = new THREE.Group(); g.add(lmk([P(G.cyl6, '#8a5a2b', 0, 3, 0, 0, 0, 0, 1.4, 6, 1.4), P(G.ico, '#3faa55', 0, 8, 0, 0, 0, 0, 8, 5.5, 8), P(G.ico, '#5cc46a', 1.8, 9.6, 0.6, 0, 0, 0, 4.6, 3.6, 4.6), P(G.ico, '#2f8a3f', -2, 7.4, -0.5, 0, 0, 0, 4.4, 3.4, 4.4)])); const gl = glow('#fff1a8', 14, 0.55); gl.position.y = 8.5; g.add(gl); g.userData.glow = gl; return g; },
+  ark: () => { const p = [P(G.box, '#7a4a24', 0, 3.2, 0, 0, 0, 0, 7, 4.2, 24), P(G.box, '#8f5a2e', 0, 5.6, 0, 0, 0, 0, 7.4, 0.6, 24.4), P(G.box, '#a8703c', 0, 7.2, -1, 0, 0, 0, 5, 2.6, 14), P(G.box, '#6b3f1d', 0, 8.9, -1, 0, 0, 0.0, 5.6, 0.5, 14.6), P(G.box, '#5e3818', 0, 1.2, 0, 0, 0, 0, 5.2, 1.2, 20)];
+    for (let i = 0; i < 5; i++) p.push(P(G.box, '#3a2410', 3.52, 7.2, -6 + i * 2.6, 0, 0, 0, 0.1, 0.8, 1.0));
+    return lmk(p, 0.05); },
+  tent: c => lmk([P(G.cone, c, 0, 1.5, 0, 0, Math.PI / 4, 0, 4.2, 3, 4.2), P(G.box, '#5a3a1a', 0, 0.8, 1.45, 0, 0, 0, 0.9, 1.6, 0.1), P(G.cyl6, '#6b4a2a', 0, 3.2, 0, 0, 0, 0, 0.12, 0.8, 0.12)]),
+  altar: () => { const g = new THREE.Group(); const p = []; for (let i = 0; i < 9; i++) p.push(P(G.ico, i % 2 ? '#b8ab94' : '#9c907b', (i % 3 - 1) * 0.75, 0.4 + Math.floor(i / 3) * 0.55, rnd(-0.2, 0.2), 0, i, 0, 0.9, 0.6, 0.9)); g.add(lmk(p)); const gl = glow('#ffb347', 4.5, 0.75); gl.position.y = 2.2; g.add(gl); g.userData.fire = [0, 2.0]; return g; },
+  pyramid: s => far([P(PYR, '#c99a55', 0, s / 2, 0, 0, Math.PI / 4, 0, s * 1.5, s, s * 1.5), P(PYR, '#e8c070', 0, s * 0.93, 0, 0, Math.PI / 4, 0, s * 0.2, s * 0.14, s * 0.2)]),
+  palm: () => { const p = [P(G.cyl6, '#8a6a3a', 0.3, 2.6, 0, 0, 0, -0.12, 0.35, 5.2, 0.35)]; for (let i = 0; i < 6; i++) { const a = i / 6 * 6.28; p.push(P(G.box, i % 2 ? '#4f8f2c' : '#63a53a', 0.6 + Math.cos(a) * 1.2, 5.1, Math.sin(a) * 1.2, Math.sin(a) * 0.5, -a, -Math.cos(a) * 0.5, 2.8, 0.12, 0.7)); } return lmk(p); },
+  shrub: () => lmk([P(G.ico, '#8a8a4a', 0, 0.4, 0, 0, 0, 0, 1.4, 0.8, 1.2), P(G.ico, '#a3a05a', 0.4, 0.55, 0.2, 0, 0, 0, 0.8, 0.6, 0.8)], 0),
+  boulder: () => lmk([P(G.ico, '#a8875e', 0, 0.8, 0, 0, 0, 0, 2.6, 1.7, 2.2), P(G.ico, '#bf9c6c', 0.9, 1.1, 0.3, 0, 0, 0, 1.4, 1.2, 1.4)], 0),
+  obelisk: () => lmk([P(G.box, '#d9b26a', 0, 4, 0, 0, 0, 0, 1.1, 8, 1.1), P(PYR, '#ffd76a', 0, 8.5, 0, 0, Math.PI / 4, 0, 1.5, 1, 1.5), P(G.box, '#c49a55', 0, 0.3, 0, 0, 0, 0, 2, 0.6, 2)]),
+  door: () => lmk([P(G.box, '#c9a873', 0, 2, 0, 0, 0, 0, 5, 4, 3.2), P(G.box, '#5a3a1a', 0, 1.2, 1.62, 0, 0, 0, 1.2, 2.2, 0.06), P(G.box, '#b3121b', -0.68, 1.3, 1.64, 0, 0, 0, 0.18, 2.5, 0.05), P(G.box, '#b3121b', 0.68, 1.3, 1.64, 0, 0, 0, 0.18, 2.5, 0.05), P(G.box, '#b3121b', 0, 2.42, 1.64, 0, 0, 0, 1.5, 0.18, 0.05), P(G.box, '#e0c08a', 0, 4.1, 0, 0, 0, 0, 5.3, 0.3, 3.4)]),
+  mountain: (h, c1, c2) => far([P(G.cone, c1, 0, h / 2, 0, 0, 0.3, 0, h * 1.3, h, h * 1.1), P(G.cone, c2, h * 0.28, h * 0.36, h * 0.1, 0, 1.0, 0, h * 0.8, h * 0.72, h * 0.7)]),
+  bush: () => { const g = new THREE.Group(); g.add(lmk([P(G.ico, '#4a7a2c', 0, 0.9, 0, 0, 0, 0, 2.6, 1.8, 2.4), P(G.ico, '#5e9136', 0.5, 1.4, 0.2, 0, 0, 0, 1.4, 1.2, 1.4)])); const gl = glow('#ff8a1e', 6, 0.85); gl.position.y = 1.6; g.add(gl); g.userData.fire = [0, 1.8]; return g; },
+  booth: () => { const p = []; for (const x of [-1.4, 1.4]) for (const z of [-1.2, 1.2]) p.push(P(G.cyl6, '#8a6a3a', x, 1.3, z, 0, 0, 0, 0.18, 2.6, 0.18)); p.push(P(G.box, '#4f9a3c', 0, 2.7, 0, 0, 0, 0, 3.6, 0.35, 3.0), P(G.ico, '#62b04a', -0.8, 2.95, 0.3, 0, 0, 0, 1.2, 0.5, 1.0), P(G.ico, '#3f8a34', 0.9, 2.95, -0.4, 0, 0, 0, 1.1, 0.5, 1.0), P(G.box, '#c94f3a', 0, 0.5, 1.3, 0, 0, 0, 2.2, 0.15, 0.1)); return lmk(p); },
+};
+function epBuild(W, ep) {
+  const g = new THREE.Group(), D = W.decor, add = (o, x, y, z, span = 330, ry = 0) => { o.position.set(x, y, z); o.rotation.y = ry; g.add(o); D.objs.push({ o, span }); return o; };
+  const fires = [], ticks = [];
+  for (const k of (ep.look && ep.look.props) || []) {
+    if (k === 'lifeTree') { add(LM.lifeTree(), -16, 0, -150, 330); }
+    if (k === 'ark') { add(LM.ark(), 24, 0, -110, 330, 0.25); add(LM.ark(), -30, 0, -280, 330, -0.4); }
+    if (k === 'tents') for (let i = 0; i < 6; i++) add(LM.tent(['#e9d3a8', '#d9a86a', '#f1e3c4'][i % 3]), (i % 2 ? -1 : 1) * rnd(12, 20), 0, -30 - i * 52, 330, rnd(0, 6));
+    if (k === 'altar') { fires.push(add(LM.altar(), 9.5, 0, -120, 330)); fires.push(add(LM.altar(), -10, 0, -270, 330)); }
+    if (k === 'pyramids') { const base = W.id === 'leviticus' ? -40 : 0; [[-60, 34, -220], [-95, 46, -300], [70, 40, -260], [120, 28, -320]].forEach(([x, s, z]) => { const m = LM.pyramid(s); m.position.set(x, base - 0.5, z); g.add(m); }); for (let i = 0; i < 3; i++) add(LM.obelisk(), (i % 2 ? -1 : 1) * 10.5, 0, -60 - i * 110, 330); }
+    if (k === 'doors') for (let i = 0; i < 5; i++) add(LM.door(), (i % 2 ? -1 : 1) * rnd(10, 13), 0, -20 - i * 64, 330, (i % 2 ? 1 : -1) * Math.PI / 2);
+    if (k === 'horeb' || k === 'sinai') { const m = LM.mountain(k === 'sinai' ? 90 : 70, '#a0764a', '#b88a58'); m.position.set(k === 'sinai' ? 10 : -40, -2, -330); g.add(m); if (k === 'sinai') { const c = glow('#fff6d8', 70, 0.6); c.position.set(10, 92, -330); g.add(c); const f = glow('#ff9a3c', 26, 0.55); f.position.set(10, 84, -326); g.add(f); ticks.push((dt, t) => { f.material.opacity = 0.4 + 0.2 * Math.sin(t * 6); }); } }
+    if (k === 'bush') { fires.push(add(LM.bush(), 8.8, 0, -90, 330)); fires.push(add(LM.bush(), -9, 0, -250, 330)); }
+    if (k === 'booths') for (let i = 0; i < 8; i++) add(LM.booth(), (i % 2 ? -1 : 1) * rnd(9, 12), 0, -20 - i * 40, 330, rnd(-0.3, 0.3));
+    if (k === 'desert') { for (let i = 0; i < 7; i++) add(LM.palm(), (i % 2 ? -1 : 1) * rnd(9.5, 16), 0, -20 - i * 46, 330, rnd(0, 6)); for (let i = 0; i < 12; i++) add(LM.shrub(), (i % 2 ? -1 : 1) * rnd(7.2, 13), 0, -10 - i * 27, 330, rnd(0, 6)); for (let i = 0; i < 8; i++) add(LM.boulder(), (i % 2 ? 1 : -1) * rnd(11, 24), 0, -35 - i * 40, 330, rnd(0, 6)); }
+    if (k === 'manna') ticks.push((dt, t, fx) => { if (Math.random() < 0.7) fx.emit(rnd(-16, 16), rnd(6, 12), rnd(-40, 0), rnd(-0.2, 0.2), -1.2, 0, 2.2, rnd(0.12, 0.2), '#fffdf0', 0); });
+    if (k === 'smoke') ticks.push((dt, t, fx) => { if (Math.random() < 0.3) fx.emit(rnd(-30, 30), rnd(0, 2), rnd(-90, -30), rnd(-0.3, 0.3), rnd(0.6, 1.2), 0, 2.4, rnd(0.6, 1.2), '#d8c6b0', 0.3); });
+  }
+  if (fires.length) ticks.push((dt, t, fx) => { for (const f of fires) if (f.position.z > -80 && f.position.z < 10 && Math.random() < 0.8) fx.emit(f.position.x + rnd(-0.4, 0.4), f.userData.fire[1], f.position.z, rnd(-0.4, 0.4), rnd(1.5, 3), rnd(-0.4, 0.4), 0.6, 0.45, pick(['#ff9a2e', '#ffd23f', '#ff6a1e']), 1.2); });
+  g.visible = false; W.group.add(g);
+  return { g, ticks };
+}
+// switch a world to an episode: its own landmark props, sea on/off (Exodus) and flood water (Genesis)
+export function setEpisode(W, ep) {
+  for (const k in W.epGroups) W.epGroups[k].g.visible = false;
+  W.epTicks = [];
+  if (!ep) return;
+  const E = W.epGroups[ep.id] || (W.epGroups[ep.id] = epBuild(W, ep));
+  E.g.visible = true; W.epTicks = E.ticks;
+  if (W.seaParts) for (const o of W.seaParts) { o.userData.off = !!(ep.look && ep.look.nosea); o.visible = !o.userData.off; }
+  W.floodWater = !(ep.boss && ep.boss.water === false);
 }

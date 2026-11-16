@@ -10,7 +10,7 @@ const base = process.env.BASE || 'http://localhost:8766/', W = +(process.env.W |
   const ctx = await b.newContext({ viewport: { width: W, height: H }, deviceScaleFactor: 2, isMobile: true, hasTouch: true });
   const p = await ctx.newPage(); const errs = []; p.on('pageerror', e => errs.push(e.message));
   await p.addInitScript(() => { localStorage.setItem('lr3d_tut', '1'); });
-  await p.goto(base + '?gfx=battery&noauto&notut&novision', { waitUntil: 'load' });
+  await p.goto(base + '?gfx=battery&noauto&notut&novision&nostory', { waitUntil: 'load' });
   await p.waitForFunction(() => window.LR && document.querySelector('#btnNew'), null, { timeout: 90000 }); await p.waitForTimeout(800);
   const ev = (f, a) => p.evaluate(f, a), wait = ms => p.waitForTimeout(ms);
   for (let i = 0; i < 30; i++) { const m = await ev(() => LR.state.mode); if (m === 'run') break; await ev(() => { const v = e => e && e.offsetParent !== null; for (const id of ['#btnNew', '#btnGo', '#chGo']) { const e = document.querySelector(id); if (v(e)) { e.click(); return; } } }); await wait(700); }

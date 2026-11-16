@@ -618,3 +618,11 @@ body #modal.show ~ .celebrate{display:grid!important;grid-template-columns:auto 
 body #modal.show ~ .celebrate i{grid-row:1/3;align-self:center}
 body #modal.show ~ .celebrate b{font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;line-height:1.2}
 body #modal.show ~ .celebrate span{font-size:11px;line-height:1.25}
+/* v14.3 · episodes: story card + episode list on the book card */
+#modal .story{font-size:15px;line-height:1.45;margin:10px 2px 8px;font-weight:600}
+body.storyon #btnPause{display:none}
+.eplist{display:flex;flex-direction:column;gap:6px;margin:4px 0 10px}
+.epi{display:flex;align-items:center;gap:10px;width:100%;text-align:left;padding:8px 10px;border-radius:14px;border:2px solid #3b2306;background:#fff8e6;color:#3b2306;font:inherit;cursor:pointer;box-shadow:0 3px 0 #3b2306}
+.epi i{font-style:normal;font-size:24px;line-height:1}.epi span{flex:1;min-width:0}.epi b{display:block;font-size:14px}.epi small{display:block;font-size:11px;opacity:.75;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.epi em{font-style:normal;font-weight:900;font-size:13px;white-space:nowrap}.epi.done{background:#fff2c4}.epi.next{background:linear-gradient(180deg,#ffe38a,#ffd23f)}
+.epi:active{transform:translateY(2px);box-shadow:0 1px 0 #3b2306}

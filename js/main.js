@@ -22,9 +22,9 @@ const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;',
 const params = new URLSearchParams(location.search);
 const TIME_SCALE = clamp(+params.get('speed') || 1, 1, 8);
 const LITE = params.has('lite');
-const APP_VER = 'v14.2';   // shown on the title, pause and settings so a phone can tell which build it runs
+const APP_VER = 'v14.3';   // shown on the title, pause and settings so a phone can tell which build it runs
 const DEBUG = params.has('debug');
-const NOVIS = params.has('novision');   // v10 test switch: journey without the vision gate
+const NOVIS = params.has('novision'), NOSTORY = params.has('nostory');   // v14.3: ?nostory skips the episode story card (tests)   // v10 test switch: journey without the vision gate
 const AUTO = params.has('autopilot'), AUTO_MIX = params.get('autopilot') === 'mix', AUTO_FUN = AUTO;
 // v11: autopilot is a test helper only (explicit ?autopilot in the address); it is never stored and always shows a badge
 if (AUTO) { const addB = () => { const d = document.createElement('div'); d.id = 'autoBadge'; d.textContent = 'TEST AUTOPILOT'; document.body.appendChild(d); }; document.readyState === 'loading' ? addEventListener('DOMContentLoaded', addB) : addB(); }
@@ -850,6 +850,19 @@ const BIBLE_KEY = 'lr3d_bible';
 function bible() { try { const b = JSON.parse(localStorage.getItem(BIBLE_KEY) || 'null'); if (b && b.books) return b; } catch (e) {} return { books: {} }; }
 function bibleSave(b) { try { localStorage.setItem(BIBLE_KEY, JSON.stringify(b)); } catch (e) {} }
 function bookRec(b, id) { return b.books[id] || (b.books[id] = { done: false, plays: 0, best: 0, stars: 0, q: {}, v: [] }); }
+// v14.3 · episodes: each book holds several visions. rec.ep[epId] = { done, stars, best, plays }.
+// Old saves (one vision per book) count as episode 1 done, with the book's stars and best score.
+function epRec(b, book, epId) {
+  const r = bookRec(b, book); if (!r.ep) r.ep = {};
+  if (r.done && !Object.keys(r.ep).length) { const e0 = BK.episodesOf(book)[0]; if (e0) r.ep[e0.id] = { done: true, stars: r.stars || 1, best: r.best || 0, plays: r.plays || 1 }; }
+  return r.ep[epId] || (r.ep[epId] = { done: false, stars: 0, best: 0, plays: 0 });
+}
+function nextEpIdx(b, book) { const eps = BK.episodesOf(book); for (let i = 0; i < eps.length; i++) if (!epRec(b, book, eps[i].id).done) return i; return -1; }
+function epStats(b, book) { const eps = BK.episodesOf(book); let done = 0, stars = 0; for (const e of eps) { const r = epRec(b, book, e.id); if (r.done) done++; stars += r.stars || 0; } return { done, stars, n: eps.length }; }
+function epWD(book, i) {   // the book's world data seen through one episode (its boss, questions, verses, place and story)
+  const WD = BK.WORLDS[book], E = BK.episodesOf(book)[i]; if (!E) return WD;
+  return Object.assign(Object.create(WD), { ep: E, epIdx: i, place: E.place, intro: E.story, boss: E.boss, quiz: E.quiz, verses: E.verses });
+}
 function bookUnlocked(id, b = bible()) { if (!BK.PLAYABLE.includes(id)) return false; const pre = BK.UNLOCK_AFTER[id]; return !pre || !!(b.books[pre] && b.books[pre].done); }
 // v12: each journey run has three vision gates (one per book). A gate takes the next unfinished open book first;
 // then finished books cycle (rotating with the run count) for replays and stars. Locked in when the gate comes into view.
@@ -857,14 +870,18 @@ function bookUnlocked(id, b = bible()) { if (!BK.PLAYABLE.includes(id)) return f
 // so a missed gate is soon followed by another. Up to VIS_MAX visions per run, then the road is yours.
 const VIS_KM = [2.35, 7.0, 9.35, 16.35, 20.0, 24.35, 32.35, 39.6, 43.0], VIS_STOPS = VIS_KM, VIS_MAX = 3;
 const visPortalD = (k = 0) => VIS_KM[k] * UPK;
-function slotBook(k) {
+// v14.3: a gate offers the next UNFINISHED EPISODE (book order, a different book than this run's other gates when it can),
+// then replays of finished episodes, rotating with the run count.
+function slotPick(k) {
   const b = bible(), open = BK.PLAYABLE.filter(id => bookUnlocked(id, b)), used = new Set(R.visSlots.map(s => s.book).filter(Boolean));
-  const fresh = open.filter(id => !(b.books[id] && b.books[id].done));
-  const unusedFresh = fresh.filter(id => !used.has(id)); if (unusedFresh.length) return unusedFresh[0];
-  const done = open.filter(id => !fresh.includes(id) && !used.has(id));
-  if (done.length) return done[(R.visRun + k) % done.length];
-  return fresh[0] || open[(R.visRun + k) % open.length] || null;   // retry an unfinished book rather than show no gate
+  const usedEp = new Set(R.visSlots.map(s => s.book && s.ep != null ? s.book + ':' + s.ep : null).filter(Boolean));
+  const fresh = open.map(id => ({ book: id, ep: nextEpIdx(b, id) })).filter(x => x.ep >= 0 && !usedEp.has(x.book + ':' + x.ep));
+  const f1 = fresh.find(x => !used.has(x.book)) || fresh[0]; if (f1) return f1;
+  const done = []; for (const id of open) BK.episodesOf(id).forEach((e, i) => { if (!usedEp.has(id + ':' + i)) done.push({ book: id, ep: i }); });
+  const d1 = done.filter(x => !used.has(x.book)); const L = d1.length ? d1 : done;
+  return L.length ? L[(R.visRun + k) % L.length] : null;
 }
+function slotBook(k) { const x = slotPick(k); return x ? x.book : null; }
 function journeyBook() { return R && R.visSlots ? slotBook(0) : BK.PLAYABLE[0]; }
 const nextSlot = () => { if (!R || !R.visSlots || (R.visDoneN || 0) >= VIS_MAX) return -1; for (let k = 0; k < VIS_STOPS.length; k++) if (R.visSlots[k].state === 'open' && visPortalD(k) - R.dist > -30) return k; return -1; };
 const VIS_LEN = 2000, VIS_GATES = [430, 900, 1330], VIS_BOSS = [1420, 1930];
@@ -894,35 +911,52 @@ function hideRoadWorld(on) {
   if (on) { visHidden = []; for (const o of RW.children) { if (keep.has(o) || String(o.userData.tag || '').startsWith('obs-')) continue; if (o.visible) { visHidden.push(o); o.visible = false; } } lampGlow.visible = false; }
   else { for (const o of visHidden) o.visible = true; visHidden = []; }
 }
-function visQuiz(id, rec) {
-  const Q = BK.WORLDS[id].quiz;
+function visQuiz(WD, rec) {
+  const Q = WD.quiz;
   return ['e', 'm', 'h'].map(l => { const pool = Q.filter(q => q[4] === l), fresh = pool.filter(q => !rec.q[q[0]]); return pick(fresh.length ? fresh : pool); });
 }
-function pickBookVerse(id, rec) { const vs = BK.WORLDS[id].verses, fresh = vs.filter(v => !rec.v.includes(v.ref)); return fresh.length ? fresh[0] : pick(vs); }
+function pickBookVerse(WD, rec) { const vs = WD.verses, fresh = vs.filter(v => !rec.v.includes(v.ref)); return fresh.length ? fresh[0] : pick(vs); }
 function visSpeed() { const V = R.vis; return Math.min(MAX_SPEED, V.s0 + (V.d / V.len) * 9 + (V.boss ? 2 : 0)); }
 function visGateZone(arrive) {
   let z = 0; const V = R.vis, rd = readDist();
   for (let i = V.gi; i < V.gates.length; i++) { const gd = V.gates[i]; if (arrive > gd - rd - 30 && arrive < gd + 8) z = 2; }
   return z;
 }
-function enterVision(id, journey) {
+function enterVision(id, journey, epIdx) {
   gateChip('');
-  const W = warmWorld(id), WD = BK.WORLDS[id], b = bible(), rec = bookRec(b, id);
+  const b = bible(); if (epIdx == null || !BK.episodesOf(id)[epIdx]) { epIdx = nextEpIdx(b, id); if (epIdx < 0) epIdx = 0; }
+  const W = warmWorld(id), WD = epWD(id, epIdx), E = WD.ep, rec = bookRec(b, id);
+  VW.setEpisode(W, E); const skyKey = 'ep_' + (E ? E.id : id); PRESETS[skyKey] = { ...W.sky, ...((E && E.look && E.look.sky) || {}) };
   fadeFlash(); sfx.power(); buzz(30); shakeDOM();
   if (R.boss) bossEnd(false);
   clearObs(); orbs.forEach(o => o.on = false); hideScrolls(); powerUps.forEach(p => { p.on = false; p.g.visible = false; }); hideGateUI(); answerGate.visible = false;
   Object.values(portals).forEach(p => p.visible = false);
   hideRoadWorld(true); W.group.visible = true;
-  const verse = pickBookVerse(id, rec), bi = BK.PLAYABLE.indexOf(id);
-  R.vis = { id, W, WD, d: 0, len: VIS_LEN, journey, gi: 0, gates: VIS_GATES.slice(), quiz: visQuiz(id, rec), verse, vGot: 0, nextScrollD: 150, scrollGap: (VIS_GATES[2] - 150) / (verse.parts.length + 0.3),
+  const verse = pickBookVerse(WD, rec), bi = BK.PLAYABLE.indexOf(id);
+  R.vis = { id, W, WD, E, epIdx, skyKey, fogMul: (E && E.look && E.look.fogMul) || W.fogMul, d: 0, len: VIS_LEN, journey, gi: 0, gates: VIS_GATES.slice(), quiz: visQuiz(WD, rec), verse, vGot: 0, nextScrollD: 150, scrollGap: (VIS_GATES[2] - 150) / (verse.parts.length + 0.3),
     right: 0, total: 0, boss: null, bossDone: false, bossK: 0, crashes: 0, score0: S.score, orbs0: S.orbs, nextPowerD: 220, wingsGiven: false, s0: Math.max(26, Math.min(40, R.speed)) + bi * 2 };
   R.nextRow = 40; R.gate = null; R.inv = 1.2; R.zoneMsg = null;
   orbMesh.visible = !W.lamps; lampMesh.visible = coinMesh.visible = W.lamps;
   visExit.visible = false; visExit.userData.lab !== journey && (visExit.userData.lab = journey);
   document.body.classList.add('invis', 'vis-' + id);
-  zoneCard(WD.name.toUpperCase(), WD.place, journey ? '✨ VISION GATE' : '📖 BIBLE VISION', 'vision');
-  rec.plays++; bibleSave(b);
+  zoneCard(E ? `${WD.name.toUpperCase()} · ${E.name}` : WD.name.toUpperCase(), WD.place, journey ? '✨ VISION GATE' : '📖 BIBLE VISION', 'vision');
+  rec.plays++; if (E) epRec(b, id, E.id).plays++; bibleSave(b);
+  if (E && !NOSTORY && !AUTO) storyCard();
   verseHUD(); powerHUD(); hudT = 0;
+}
+// v14.3: each episode opens with its story card (the run waits; tap Run). Replays start by themselves after 4 s.
+function storyCard() {
+  const V = R && R.vis; if (!V || !V.E) return; const E = V.E, WD = V.WD, n = BK.episodesOf(V.id).length, b = bible(), er = epRec(b, V.id, E.id), m = $('#modalBody');
+  S.paused = true; S.story = true; settleRunner();
+  m.innerHTML = `<div class="banner vis vis-${V.id}"><div class="km">${WD.icon} ${esc(WD.name.toUpperCase())} · EPISODE ${E.n} OF ${n}</div><div class="name">${esc(E.icon + ' ' + E.name)}</div></div>
+    <p class="story">${esc(E.story)}</p>
+    <div class="bboss"><span>${E.boss.icon}</span><div><b>Finale: ${esc(E.boss.title)}</b><small>${esc(E.boss.sub)}</small></div></div>
+    <div class="vstars">${starsHTML(er.stars || 0)}</div>
+    <button class="btn primary" id="stGo">▶ Run</button>`;
+  show('modal'); document.body.classList.add('storyon'); m.scrollTop = 0;
+  const go = () => { clearInterval(storyCard.t); if (!S.story) return; S.story = false; document.body.classList.remove('storyon'); hide('modal'); S.paused = false; if (R) { R.inv = Math.max(R.inv, 1.0); } sfx.tap(); };
+  $('#stGo').onclick = go; clearInterval(storyCard.t);
+  if (er.plays > 1) { let c = 4; $('#stGo').textContent = `▶ Run (${c})`; storyCard.t = setInterval(() => { c--; if (!S.story) return clearInterval(storyCard.t); if (c <= 0) go(); else $('#stGo').textContent = `▶ Run (${c})`; }, 1000); }
 }
 function leaveVisionWorld() { document.body.classList.remove('vfin');
   const V = R && R.vis; if (!V) return;
@@ -946,13 +980,13 @@ function journeyPortal() {
   if (k < 0) { R.visBook = null; return; }
   const sl = R.visSlots[k], pd = visPortalD(k) - R.dist;
   if (pd > 330) return;
-  if (!sl.book) { sl.book = slotBook(k); if (!sl.book) { sl.state = 'none'; gateLog(`gate ${k + 1}: no playable book`); return; } warmWorld(sl.book); gateLog(`gate ${k + 1} ready: ${sl.book} at KM ${KM(visPortalD(k)).toFixed(2)}`); }
+  if (!sl.book) { const pk = slotPick(k); sl.book = pk && pk.book; sl.ep = pk ? pk.ep : null; if (!sl.book) { sl.state = 'none'; gateLog(`gate ${k + 1}: no playable book`); return; } warmWorld(sl.book); gateLog(`gate ${k + 1} ready: ${sl.book} ep ${sl.ep + 1} at KM ${KM(visPortalD(k)).toFixed(2)}`); }
   const id = sl.book; R.visBook = id;
   const P0 = getPortal(id); P0.userData.slot = k;
   P0.visible = pd > -3; P0.position.z = -pd; if (P0.visible) { P0.userData.disc.rotation.z = S.t * 0.8; P0.userData.disc.material.opacity = 0.36 + 0.1 * Math.sin(S.t * 4); }
   if (!sl.told && pd < readDist() + 40) { sl.told = true; const rec = bible().books[id]; /* v14: the top chip announces the gate (no bottom toast) */ void 0; sfx.stop(); }
-  gateChip(pd > 0 && pd < readDist() + 260 ? `✨ Vision gate in ${Math.max(10, Math.round(pd * 5 / 10) * 10)} m · ${BK.WORLDS[id].name}` : '');
-  if (pd <= 0) { if (pd < -30) gateLog(`gate ${k + 1} reached late (${(-pd).toFixed(0)} past), entering anyway`); sl.state = 'in'; R.visSlot = k; enterVision(id, true); }   // (a debug jump far past the gate skips it)
+  { const E = BK.episodesOf(id)[sl.ep]; gateChip(pd > 0 && pd < readDist() + 260 ? `✨ Vision gate in ${Math.max(10, Math.round(pd * 5 / 10) * 10)} m · ${BK.WORLDS[id].name}${E ? ': ' + E.name : ''}` : ''); }
+  if (pd <= 0) { if (pd < -30) gateLog(`gate ${k + 1} reached late (${(-pd).toFixed(0)} past), entering anyway`); sl.state = 'in'; R.visSlot = k; enterVision(id, true, sl.ep); }   // (a debug jump far past the gate skips it)
 }
 function visionRow(light) {
   const V = R.vis, O = V.boss ? V.W.bossObs : V.W.obs, lanes = freeLanes(), z = SPAWN_Z;
@@ -988,7 +1022,7 @@ function visGates(dt) {
 function visSky(dt) {
   const V = R.vis, bid = V.WD.boss.id, k = V.bossK;
   const b = bid === 'flood' ? ['storm', 0.82] : bid === 'chariots' ? ['vis_exodus_b', 0.75] : ['dusk', 0.45];
-  setSky('vis_' + V.id, b[0], k * b[1], V.W.fogMul * (1 + k * 0.35));
+  setSky(V.skyKey || 'vis_' + V.id, b[0], k * b[1], (V.fogMul || V.W.fogMul) * (1 + k * 0.35));
   lanternLight.intensity = (0.5 + k * 1.6) * S.lantern / 100;
 }
 function visBossStart() {
@@ -1008,7 +1042,7 @@ function visBossEnd(win) {
   const el = $('#bossCard'); el.className = 'boss win'; el.innerHTML = `<b>${esc(B.winTitle)} +${pts}</b><span>“${esc(B.win[0])}”</span><small>${esc(B.win[1])} (KJV)</small>`; void el.offsetWidth; if (!bossCardRun(el)) el.classList.add('show');
   clearTimeout(el._t); el._t = setTimeout(() => el.classList.remove('show'), 3400);
   for (let k = 0; k < 40; k++) fx.emit(R.px + rand(-3, 3), rand(0.5, 4), rand(-4, 0), rand(-3, 3), rand(1, 5), rand(-2, 2), 1.0, 0.6, pick(['#fff3a0', '#ffd23f', '#ffffff']), 0.5);
-  if (B.id === 'flood') { const rb = textSprite('🌈', 26); rb.position.set(0, 16, -90); rb.material.opacity = 0.9; scene.add(rb); setTimeout(() => scene.remove(rb), 4200); }
+  if (B.id === 'flood' && !B.haz) { const rb = textSprite('🌈', 26); rb.position.set(0, 16, -90); rb.material.opacity = 0.9; scene.add(rb); setTimeout(() => scene.remove(rb), 4200); }
 }
 // returns true when the boss ended the run this frame
 function visBoss(dt, move) {
@@ -1031,12 +1065,13 @@ function visBoss(dt, move) {
   if (V.d >= VIS_BOSS[1]) { visBossEnd(true); return false; }
   const g = $('#gust');
   if (B.id === 'flood') {
-    for (let i = 0; i < 5; i++) fx.emit(R.px + rand(-14, 14), rand(7, 13), rand(-34, 4), rand(-3, -1), -30, 0, 0.45, 0.16, '#cfe8ff', 0);
+    if (B.rain !== false) for (let i = 0; i < 5; i++) fx.emit(R.px + rand(-14, 14), rand(7, 13), rand(-34, 4), rand(-3, -1), -30, 0, 0.45, 0.16, '#cfe8ff', 0);
     // v11: waves never carry the runner: a wave rolls down one telegraphed lane (jump it or change lane)
+    // v14.3: episodes reuse this finale with their own hazard (thorns, rocks, stones, pots)
     if (b.gustT == null) b.gustT = b.t;
-    laneHazard(b, dt, 'vWave', l => `🌊 Wave in the ${LANE_NAMES[l]} lane!`, 1.15, [2.6, 4.0]);
+    laneHazard(b, dt, B.haz || 'vWave', l => (B.warn || '🌊 Wave in the {l} lane!').replace('{l}', LANE_NAMES[l]), 1.15, [2.6, 4.0]);
   } else if (B.id === 'chariots') {
-    if (!b.warn && !qActive() && (b.t -= dt) <= 0) { const lane = Math.random() < 0.6 ? R.lane : pick([0, 1, 2]); b.warn = { lane, t: 1.3 }; laneWarn.position.z = -6; laneWarn.visible = true; laneWarn.position.x = LANES[lane]; g.textContent = `🐎 Chariot behind you! Leave the ${['left', 'middle', 'right'][lane]} lane!`; g.classList.add('show'); sfx.whoosh(); buzz(12); }
+    if (!b.warn && !qActive() && (b.t -= dt) <= 0) { const lane = Math.random() < 0.6 ? R.lane : pick([0, 1, 2]); b.warn = { lane, t: 1.3 }; laneWarn.position.z = -6; laneWarn.visible = true; laneWarn.position.x = LANES[lane]; g.textContent = (B.warn || '🐎 Chariot behind you! Leave the {l} lane!').replace('{l}', ['left', 'middle', 'right'][lane]); g.classList.add('show'); sfx.whoosh(); buzz(12); }
     if (b.warn) {
       laneWarn.material.opacity = 0.28 + 0.22 * Math.sin(S.t * 22);
       if ((b.warn.t -= dt) <= 0) { const c = chariotFree(); c.on = true; c.hit = false; c.nm = false; c.lane = b.warn.lane; c.v = 34; c.obj.visible = true; c.obj.position.set(LANES[c.lane], 0, 15); sfx.thunder(); shakeDOM(); b.warn = null; b.t = rand(1.5, 2.5); laneWarn.visible = false; g.classList.remove('show'); }
@@ -1046,7 +1081,7 @@ function visBoss(dt, move) {
     if (!qActive() && (b.t -= dt) <= 0) {
       b.t = rand(1.2, 1.9); const l = Math.random() < 0.55 ? R.lane : pick([0, 1, 2]);
       if (!busyLane(l)) { const a = spawnObs('vDrop', l, -Math.max(36, R.speed * 1.45)); a.fallY = 17; a.obj.position.y = 17; a.blob = a.obj.children.find(c => c.material === blobMat); if (a.blob) a.blob.position.y = 0.03 - 17; }
-      if (!b.told) { b.told = true; g.textContent = '⚠️ Watch the shadows: stones are falling!'; g.classList.add('show'); setTimeout(() => g.classList.remove('show'), 2200); }
+      if (!b.told) { b.told = true; g.textContent = B.warn || '⚠️ Watch the shadows: stones are falling!'; g.classList.add('show'); setTimeout(() => g.classList.remove('show'), 2200); }
     }
   }
   return false;
@@ -1056,6 +1091,8 @@ function finishVision() {
   const verseDone = V.vGot >= V.verse.parts.length, stars = BK.starsFor(V.right, V.gates.length, verseDone);
   const bonus = 150 + stars * 50; S.score += bonus; R.earn += 30 + stars * 15; addLantern(8);
   const pts = S.score - V.score0, first = !rec.done;
+  const E = V.E, er = E ? epRec(b, V.id, E.id) : null, epFirst = er ? !er.done : false;
+  if (er) { er.done = true; er.stars = Math.max(er.stars || 0, stars); er.best = Math.max(er.best || 0, pts); }
   rec.done = true; rec.stars = Math.max(rec.stars || 0, stars); rec.best = Math.max(rec.best || 0, pts);
   if (verseDone && !rec.v.includes(V.verse.ref)) {
     rec.v.push(V.verse.ref);
@@ -1063,7 +1100,7 @@ function finishVision() {
   }
   bibleSave(b); dstat('vision', 1);
   const nextId = BK.PLAYABLE.find(id => BK.UNLOCK_AFTER[id] === V.id), unlocked = first && nextId ? BK.WORLDS[nextId].name : null;
-  const res = { id: V.id, stars, pts, right: V.right, total: V.total, verseDone, verse: V.verse, unlocked, journey: V.journey, orbs: S.orbs - V.orbs0 };
+  const nxt = nextEpIdx(b, V.id), res = { id: V.id, ep: V.epIdx, epFirst, nextEp: nxt, stars, pts, right: V.right, total: V.total, verseDone, verse: V.verse, unlocked, journey: V.journey, orbs: S.orbs - V.orbs0 };
   R.lastVision = res;
   for (let k = 0; k < 40; k++) fx.emit(R.px + rand(-3, 3), rand(0.5, 4), rand(-4, 0), rand(-3, 3), rand(1, 5), rand(-2, 2), 1.0, 0.6, pick(['#fff3a0', '#ffd23f', '#ffffff']), 0.5);
   if (V.journey) {
@@ -1072,42 +1109,48 @@ function finishVision() {
     if (R.visSlots && R.visSlots[k]) R.visSlots[k].state = 'done'; R.visDoneN = (R.visDoneN || 0) + 1;
     R.dist = Math.max(R.dist, visPortalD(k) + 5); R.stopIdx = si; R.zone = -1; R.kmInt = Math.floor(KM(R.dist)); R.inv = 1.5; R.nextRow = 30; R.nextScrollD = R.dist + 80; R.nextPowerD = R.dist + 300;
     R.cp = snapCP(R.dist, si, back + ' (after the vision)'); R.visBook = null; persist();
-    toast(`🌈 Vision complete! ${WD.name} ${'★'.repeat(stars)}${'☆'.repeat(3 - stars)} +${bonus}${unlocked ? ` · ${unlocked} unlocked on the Bible map` : ''} · back on the expressway near ${back}`, 3600);
+    toast(`🌈 Vision complete! ${WD.name}${E ? ': ' + E.name : ''} ${'★'.repeat(stars)}${'☆'.repeat(3 - stars)} +${bonus}${unlocked ? ` · ${unlocked} unlocked on the Bible map` : ''} · back on the expressway near ${back}`, 3600);
   } else {
     settleRunner(); S.paused = true; bankRun(false); V.finished = true; document.body.classList.add('vfin'); hideGateUI(); clearTimeout($('#bossCard')._t); $('#bossCard').classList.remove('show'); $('#gust').classList.remove('show'); showVisionResult(res);   // the vision world stays behind the results card
   }
 }
 function starsHTML(n, max = 3) { return `<span class="stars">${'★'.repeat(n)}<i>${'★'.repeat(max - n)}</i></span>`; }
 function showVisionResult(r) {
-  const WD = BK.WORLDS[r.id], m = $('#modalBody');
-  m.innerHTML = `<div class="banner vis vis-${r.id}"><div class="km">📖 ${esc(WD.name.toUpperCase())} · VISION COMPLETE</div><div class="name">${esc(WD.place)}</div></div>
+  const WD = epWD(r.id, r.ep || 0), E = WD.ep, n = BK.episodesOf(r.id).length, m = $('#modalBody');
+  const nx = r.nextEp >= 0 && r.nextEp !== r.ep ? BK.episodesOf(r.id)[r.nextEp] : null;
+  m.innerHTML = `<div class="banner vis vis-${r.id}"><div class="km">📖 ${esc(WD.name.toUpperCase())}${E ? ` · EPISODE ${E.n} OF ${n}` : ''} · COMPLETE</div><div class="name">${esc(E ? E.name : WD.place)}</div></div>
     <div class="vstars">${starsHTML(r.stars)}</div>
     <div class="chips"><span class="chip">✨ ${r.pts} light</span><span class="chip">📖 ${r.right}/${r.total} questions</span><span class="chip">🪙 ${r.orbs} collected</span></div>
     ${r.verseDone ? `<div class="vmem"><div class="vt">📜 VERSE SAVED TO MY VERSES</div><div class="vx">“${esc(r.verse.text)}”</div><b>${esc(r.verse.ref)} (KJV)</b></div>` : `<p class="small">📜 Collect every scroll to save <b>${esc(r.verse.ref)}</b> to My Verses.</p>`}
     ${r.unlocked ? `<p class="unl">🔓 <b>${esc(r.unlocked)}</b> is now open on the Bible map!</p>` : ''}
     ${progressHTML()}
     <p class="small">★ finish · ★★ two questions right · ★★★ all three right and the whole verse</p>
-    <button class="btn primary" id="vrAgain">🔁 Play ${esc(WD.name)} again</button>
+    ${nx ? `<button class="btn primary" id="vrNext">▶ Next: ${esc(nx.icon + ' ' + nx.name)}</button>` : ''}
+    <button class="btn ${nx ? '' : 'primary'}" id="vrAgain">🔁 Play ${esc(E ? E.name : WD.name)} again</button>
     <button class="btn" id="vrMap">📖 Bible map</button>
     <button class="btn ghost" id="vrHome">🏠 Main menu</button>`;
   show('modal'); m.scrollTop = 0;
-  $('#vrAgain').onclick = () => { sfx.tap(); hide('modal'); startVisionRun(r.id); };
+  $('#vrAgain').onclick = () => { sfx.tap(); hide('modal'); startVisionRun(r.id, r.ep); };
+  if ($('#vrNext')) $('#vrNext').onclick = () => { sfx.tap(); hide('modal'); startVisionRun(r.id, r.nextEp); };
   $('#vrMap').onclick = () => { sfx.tap(); hide('modal'); enterTitle(); openBibleMap(); };
   $('#vrHome').onclick = () => { sfx.tap(); hide('modal'); enterTitle(); };
 }
-function startVisionRun(id) {
-  ensureAudio(); hide('bible'); hide('title'); hide('modal');
+function startVisionRun(id, ep) {
+  // v14: works from every state (title, pause mid-run, after a fall, results, inside another vision)
+  ensureAudio(); hide('bible'); hide('title'); hide('modal'); hide('pause'); hide('dialog'); S.userPause = null; S.dlgOpen = false; S.slowmo = false; document.body.classList.remove('dlg-run', 'vfin');
+  if (S.tut) endTutorial(true); clearRunChips();
+  if (R && R.vis) leaveVisionWorld(); if (R && R.boss) bossEnd(false);
   if (!save) { save = freshSave(); persist(); }
   buildPlayer();
   S.plan = { event: C.EVENTS[0], enc: [], quiz: C.GATE_Q.slice(0, 9), road: [], door: null, quest: null, verse: pickVerse(save.chapter), story: null };
   Object.assign(S, { score: 0, orbs: 0, hits: 0, quizRight: 0, quizTotal: 0, helpedRun: 0, virtues: {}, log: [], vGot: 0, verseDone: false });
   S.floor = 15; S.lantern = 60;
-  setMoralNPC(null); startRun({ vision: id }); enterVision(id, false);
+  setMoralNPC(null); startRun({ vision: id }); enterVision(id, false, ep);
 }
 function restartVision() {
   const V = R.vis; if (!V) return; const id = V.id, j = V.journey;
   if (j) { restartFrom(R.cp); return; }   // the journey checkpoint is Ojota, right before the vision gate
-  restartFrom(R.cp0); enterVision(id, false);
+  restartFrom(R.cp0); enterVision(id, false, V.epIdx);
 }
 function leaveVisionEarly() {   // journey only: skip the vision and carry on along the expressway
   const k = R.visSlot ?? 0; if (R.visSlots && R.visSlots[k]) R.visSlots[k].state = 'skip';
@@ -1137,17 +1180,17 @@ function showFallenVision(cause) {
   if ($('#rMap')) $('#rMap').onclick = () => { sfx.tap(); hide('modal'); leaveVisionWorld(); enterTitle(); openBibleMap(); };
 }
 /* ---- the Bible map screen ---- */
-function bibleTotals(b = bible()) { let stars = 0, done = 0; for (const id of BK.PLAYABLE) { const r = b.books[id]; if (r) { stars += r.stars || 0; if (r.done) done++; } } return { stars, done }; }
+function bibleTotals(b = bible()) { let stars = 0, done = 0, eps = 0, epDone = 0; for (const id of BK.PLAYABLE) { const r = b.books[id], st = epStats(b, id); stars += st.stars; epDone += st.done; eps += st.n; if (r && r.done) done++; } return { stars, done, eps, epDone }; }
 function openBibleMap() {
   ensureAudio(); const b = bible(), t = bibleTotals(b), el = $('#bibleBody');
   const tile = bk => {
     const play = BK.PLAYABLE.includes(bk.id), open = play && bookUnlocked(bk.id, b), r = b.books[bk.id];
     const cls = !play ? 'soon' : open ? 'play' + (r && r.done ? ' done' : '') : 'lock';
-    const sub = !play ? 'Soon' : !open ? '🔒' : r && r.done ? starsHTML(r.stars) : 'Play ▶';
+    const st = play ? epStats(b, bk.id) : null, sub = !play ? 'Soon' : !open ? '🔒' : st.done ? `${st.done}/${st.n} · ${st.stars}★` : `${st.n} episodes ▶`;
     return `<button class="btile ${cls}" data-id="${bk.id}" aria-label="${esc(bk.name)}"><i>${bk.icon}</i><b>${esc(bk.name)}</b><em>${sub}</em></button>`;
   };
   el.innerHTML = `<div class="bmhead"><h2>📖 The Bible Map</h2><button class="iconbtn bmx" id="bmClose" aria-label="Close">✕</button></div>
-    <p class="small">66 books · enter a book through its <b>vision gate</b> · <b>${t.done}/${BK.PLAYABLE.length}</b> visions done · <b>${t.stars}/${BK.PLAYABLE.length * 3}</b> ★</p>
+    <p class="small">66 books · enter a book through its <b>vision gate</b> · <b>${t.epDone}/${t.eps}</b> episodes done · <b>${t.stars}/${t.eps * 3}</b> ★</p>
     <div class="bprog"><i style="width:${(t.done / 66 * 100).toFixed(1)}%"></i><span>${t.done}/66 books</span></div>
     ${BK.SECTIONS.map(([sid, name, icon]) => { const list = BK.BOOKS.filter(x => x.sec === sid); return `<h3 class="bsec">${icon} ${esc(name)} <small>${list.length}</small></h3><div class="bgrid">${list.map(tile).join('')}</div>`; }).join('')}
     <p class="small">Wave 1: Genesis, Exodus and Leviticus are open. More books arrive in later waves. Questions and verses are KJV.</p>
@@ -1166,15 +1209,16 @@ function openBookCard(id) {
   const WD = BK.WORLDS[id], b = bible(), r = bookRec(b, id), el = $('#bibleBody'), qRight = WD.quiz.filter(q => r.q[q[0]]).length;
   el.innerHTML = `<div class="banner vis vis-${id}"><div class="km">${WD.icon} ${esc(WD.name.toUpperCase())} · VISION ${BK.PLAYABLE.indexOf(id) + 1}</div><div class="name">${esc(WD.place)}</div></div>
     <p class="btag">${esc(WD.tag)}</p>
-    <div class="vstars">${starsHTML(r.stars || 0)}</div>
+    <h3>🎬 Episodes</h3>
+    <div class="eplist">${BK.episodesOf(id).map((E, i) => { const er = epRec(b, id, E.id), nx = i === nextEpIdx(b, id); return `<button class="epi ${er.done ? 'done' : ''} ${nx ? 'next' : ''}" data-ep="${i}"><i>${E.icon}</i><span><b>${E.n}. ${esc(E.name)}</b><small>${esc(E.place)}${er.best ? ' · best ' + er.best : ''}</small></span><em>${er.done ? starsHTML(er.stars || 0) : nx ? 'Next ▶' : '▶'}</em></button>`; }).join('')}</div>
     <div class="chips"><span class="chip">🏆 Best ${r.best || 0}</span><span class="chip">📜 Verses ${r.v.length}/${WD.verses.length}</span><span class="chip">📖 Questions ${qRight}/${WD.quiz.length}</span><span class="chip">▶ Played ${r.plays || 0}</span></div>
-    <div class="bboss"><span>${WD.boss.icon}</span><div><b>${esc(WD.boss.title)}</b><small>${esc(WD.boss.sub)}</small></div></div>
-    <button class="btn primary" id="bkGo">▶ Enter the vision</button>
+    <button class="btn primary" id="bkGo">▶ Enter the vision · ${esc((BK.episodesOf(id)[Math.max(0, nextEpIdx(b, id))] || {}).name || WD.name)}</button>
     <h3>📜 Verses from ${esc(WD.name)}</h3>
     ${WD.verses.map(v => r.v.includes(v.ref) ? `<div class="verse">“${esc(v.text)}”<b>${esc(v.ref)} (KJV)</b></div>` : `<div class="verse locked">🔒 ${esc(v.ref)} · collect its scrolls in the vision</div>`).join('')}
     <button class="btn ghost" id="bkBack">← Bible map</button>`;
   el.scrollTop = 0;
-  $('#bkGo').onclick = () => { sfx.good(); startVisionRun(id); };
+  $('#bkGo').onclick = () => { sfx.good(); startVisionRun(id, Math.max(0, nextEpIdx(b, id))); };
+  el.querySelectorAll('.epi').forEach(x => x.onclick = () => { sfx.good(); startVisionRun(id, +x.dataset.ep); });
   $('#bkBack').onclick = () => { sfx.tap(); openBibleMap(); };
 }
 function updateRun(dt) {
@@ -1597,7 +1641,7 @@ function showFallen(cause) {
   $('#rStart').onclick = () => { sfx.tap(); R.revived = false; restartFrom(R.cp0); };
 }
 function riseQuestion() {
-  const src = R.vis ? BK.WORLDS[R.vis.id].quiz : C.GATE_Q, used = new Set((R.vis ? R.vis.quiz : S.plan.quiz).map(q => q[0])), pool = src.filter(q => !used.has(q[0]));
+  const src = R.vis ? R.vis.WD.quiz : C.GATE_Q, used = new Set((R.vis ? R.vis.quiz : S.plan.quiz).map(q => q[0])), pool = src.filter(q => !used.has(q[0]));
   const q = pick(pool.length ? pool : src), order = shuffle(q[1].map((t, i) => ({ t, ok: i === q[2] })));
   R.riseOk = order.findIndex(o => o.ok);
   const m = $('#modalBody');
@@ -2358,11 +2402,11 @@ function paintProgBar() {
 }
 let lvlQ = [];
 const DEFER = [];   // v14.2: celebrations earned mid-run, shown on the results screen
-setInterval(() => { if (DEFER.length && !running() && !S.dlgOpen && (S.mode !== 'run' || document.querySelector('#modal.show') || document.body.classList.contains('vfin'))) { const l = DEFER.splice(0); l.forEach(c => celebrate(c[0], c[1])); } }, 500);
+setInterval(() => { if (running()) { const ce = $('#celebrate'); if (ce && ce.classList.contains('show')) { ce.classList.remove('show'); if (ce._cur) { DEFER.unshift(ce._cur); ce._cur = null; } } } if (DEFER.length && !running() && !S.dlgOpen && !S.story && (S.mode !== 'run' || document.querySelector('#modal.show') || document.body.classList.contains('vfin'))) { const l = DEFER.splice(0); l.forEach(c => celebrate(c[0], c[1])); } }, 500);
 function celebrate(html, cls) {
   if (running()) { DEFER.push([html, cls]); runChip(chipTxt(html), 'cel', 1); return; }
   const el = $('#celebrate'); lvlQ.push([html, cls]); if (el.classList.contains('show')) return;
-  const next = () => { const it = lvlQ.shift(); if (!it) return; el.className = 'celebrate ' + it[1]; el.innerHTML = it[0]; void el.offsetWidth; el.classList.add('show'); setTimeout(() => { el.classList.remove('show'); setTimeout(next, 350); }, 2300); };
+  const next = () => { if (running()) { DEFER.push(...lvlQ.splice(0)); return; } const it = lvlQ.shift(); if (!it) return; el._cur = it; el.className = 'celebrate ' + it[1]; el.innerHTML = it[0]; void el.offsetWidth; el.classList.add('show'); setTimeout(() => { el.classList.remove('show'); setTimeout(next, 350); }, 2300); };
   next();
 }
 PG.on((type, d) => {
@@ -2773,9 +2817,11 @@ window.LR = {
   dark(k) { if (R) R.forceDark = k || 0; },
   weather(m) { if (R) R.ev = { ...R.ev, mod: { ...R.ev.mod, ...(m || {}) } }; },   // v14 test hook: force a weather state (rain/fog/dusk)
   get acts() { return R ? { uiAgo: Math.round(performance.now() - UI_T), ...(R.acts || { move: 0, jump: 0, slide: 0, ramp: 0 }), lane: R.lane, py: +R.py.toFixed(2), sl: +R.sl.toFixed(2), wings: R.wings || 0, grind: !!R.grind } : null; },
-  vision(id) { startVisionRun(id || 'genesis'); },
+  vision(id, ep) { startVisionRun(id || 'genesis', ep); },
+  storyGo() { const b = document.querySelector('#stGo'); if (b && S.story) b.click(); return !!b; },
+  get eps() { const b = bible(); return Object.fromEntries(BK.PLAYABLE.map(id => [id, { next: nextEpIdx(b, id), ...epStats(b, id) }])); },
   visD(d) { if (R && R.vis) { const V = R.vis; if (V.boss && d < VIS_BOSS[0]) visBossEnd(false); V.d = d; while (V.gi < V.gates.length && V.gates[V.gi] < d - 2) V.gi++; R.gate = null; hideGateUI(); clearObs(); R.nextRow = 20; V.nextScrollD = d + 40; V.nextPowerD = d + 60; } },
-  get vis() { const V = R && R.vis; return V ? { id: V.id, d: Math.round(V.d), len: V.len, gi: V.gi, right: V.right, total: V.total, vGot: V.vGot, parts: V.verse.parts.length, boss: !!V.boss, bossDone: V.bossDone, bossK: +V.bossK.toFixed(2), finished: !!V.finished, journey: V.journey, wings: +(R.wings || 0).toFixed(2), py: +R.py.toFixed(2), lamps: !!V.W.lamps, chariots: chariots.filter(c => c.on).length, speed: +R.speed.toFixed(1) } : null; },
+  get vis() { const V = R && R.vis; return V ? { id: V.id, ep: V.E ? V.E.id : null, epIdx: V.epIdx, story: !!S.story, boss0: V.WD.boss.title, d: Math.round(V.d), len: V.len, gi: V.gi, right: V.right, total: V.total, vGot: V.vGot, parts: V.verse.parts.length, boss: !!V.boss, bossDone: V.bossDone, bossK: +V.bossK.toFixed(2), finished: !!V.finished, journey: V.journey, wings: +(R.wings || 0).toFixed(2), py: +R.py.toFixed(2), lamps: !!V.W.lamps, chariots: chariots.filter(c => c.on).length, speed: +R.speed.toFixed(1) } : null; },
   get visBook() { if (!R) return null; const k = nextSlot(); return { book: R.visBook || (k >= 0 && R.visSlots ? (R.visSlots[k].book || slotBook(k)) : null), skip: R.visSkip, portalD: visPortalD(Math.max(0, k)), next: k, slots: R.visSlots ? R.visSlots.map((s, i) => ({ ...s, at: visPortalD(i), km: +KM(visPortalD(i)).toFixed(2) })) : null, last: R.lastVision || null }; },
   get bible() { return bible(); },
   bibleMap() { openBibleMap(); },
