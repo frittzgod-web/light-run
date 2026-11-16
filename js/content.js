@@ -644,3 +644,9 @@ export const BOSSES = {
   goslow: { km0: 28.5, km1: 30.6, icon: '🚗', title: 'IBAFO GO-SLOW', sub: 'Weave the jam · hop the danfo roofs!', reward: 400, win: ['I can do all things through Christ which strengtheneth me.', 'Philippians 4:13'], winTitle: '🙌 Through the go-slow!' },
   market: { km0: 36.5, km1: 38.9, icon: '🛒', title: 'MOWE MARKET RUSH', sub: 'Dodge hawkers · duck the awnings!', reward: 400, win: ['Let us run with patience the race that is set before us.', 'Hebrews 12:1'], winTitle: '🏃🏾 Market cleared!' },
 };
+
+// v9: an easy warm-up question for the very first gate (Ojota) in chapter 1
+export const EASY_FIRST_Q = 'Who built the ark?';
+// v9: short versions of long answers so gate labels fit three-across on 360px phones
+const SHORT_OPT = { 'The Good Samaritan': 'Good Samaritan', 'The Prodigal Son': 'Prodigal Son', 'Judas Iscariot': 'Judas', 'The Holy Ghost came': 'Holy Ghost came', 'The Red Sea': 'Red Sea', 'The Dead Sea': 'Dead Sea', 'Sea of Galilee': 'Galilee', 'A young donkey': 'Young donkey' };
+export function shortOpt(t) { return SHORT_OPT[t] || t; }

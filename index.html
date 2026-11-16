@@ -35,6 +35,7 @@
     <div class="pill score" id="hScore">✨ 0</div>
   </div>
   <div class="hrow2"><div class="pill info" id="hInfo">Next stop: Ojota</div><div class="pill combo hidden" id="hCombo"></div><div class="pill pow hidden" id="hPow"></div></div>
+  <div id="hBoss" class="hidden"><span></span><em></em><i><b></b></i></div>
   <div class="prog"><i id="hProg"></i></div>
   <div id="map"><div class="track"><i id="mapFill"></i></div><div id="mapStops"></div><div id="mapBest" class="hidden">🏁</div><div id="mapMe">🏃🏾</div></div>
   <div id="hVerse" class="hidden"></div>
@@ -75,7 +76,7 @@
 <section id="select" class="screen bottom">
   <div class="card selcard creator">
     <div class="crow"><input id="pname" maxlength="16" placeholder="Your name tag" autocomplete="off" aria-label="Name tag"><button id="btnRand" class="btn slim">🎲 Randomise</button></div>
-    <div class="ctabs" id="ctabs"></div>
+    <div class="ctabs-wrap" id="ctwrap"><div class="ctabs" id="ctabs"></div><button class="ctmore" id="ctMore" aria-label="More tabs">›</button></div>
     <div class="cbody" id="cbody"></div>
     <div class="cfoot"><button class="btn ghost slim" id="btnSelBack">Back</button><button id="btnSelShop" class="btn slim">🛍️ Shop</button><button id="btnGo" class="btn primary">Let's go! ▶</button></div>
     <div class="small chint">Drag the pilgrim to turn them around</div>
@@ -137,6 +138,7 @@
     <h2>⏸ Paused</h2>
     <p class="small" id="pauseNote">Take a breath. The road will wait for you.</p>
     <button class="btn primary" id="btnResume">▶ Resume</button>
+    <button class="btn slim hidden" id="btnPauseCP">↩ Restart from last bus stop</button>
     <div class="row2"><button class="btn slim" id="btnPauseSet">⚙️ Settings</button><button class="btn slim" id="btnPauseHow">❓ How to play</button></div>
     <button class="btn ghost slim" id="btnQuit">🏠 Quit to title</button>
   </div>

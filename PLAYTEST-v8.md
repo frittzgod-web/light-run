@@ -60,3 +60,20 @@ All pass. Against v7, the same test reproduces the bug: `0 → 2` and `2 → 0`.
 - Draw calls: run ~100–140, camp ~33. Frame rate (software-rendered test machine) is 28–42 fps on Balanced. Real phones run on the GPU and will be faster.
 - Load time to the title screen: about 4.2 s on the local server.
 - `reg7.js` (both sizes), `smoke.js`, `camp.js` and `swipe8.js` all pass.
+
+## D. v9 (16 Nov 2026): recommendations implemented
+- **Gentle start:** in chapter 1, or a player's first 3 runs, a danfo, truck or okada hit before KM 3 now costs −40, some light and a short slowdown, followed by 1.6 s of invulnerability. It no longer ends the run, and a double stumble there doesn't either. Full stakes return after KM 3. The start is quicker (22, was 20). Extra light trails appear in free lanes for the first 2.5 km, the easy traffic mix runs until KM 2, and Ojota always asks an easy warm-up question in chapter 1.
+- **Boss clash:** roadside encounters are scheduled outside every boss window (the window runs from 0.6 km before the boss to 0.15 km after it). As a second guard, an encounter never opens while a boss is active. The debug jump (`LR.km`) now moves the encounter schedule along too.
+- **Less crowding:** short answer versions are used ("Good Samaritan", "Judas", "Galilee"…). Answers longer than 11 characters use a smaller font and wrap to two lines, and three of them fit across a 360 px phone. While a question is showing, the info pill, stop names and verse strip hide.
+- **Small touches:**
+  - The creator tabs fade at the edge and show a nudging › button.
+  - The "Answer gates" tutorial card is a single line and closes after 4 s.
+  - The camp has 12 tents, avenue banners, mats and coolers, food-court bunting and about 25 more people (fewer on the low graphics tier).
+  - The camp camera is pulled back, and trees and palms between the camera and the player are hidden.
+  - The pause menu has "↩ Restart from <last bus stop>".
+- **More thrill:**
+  - Near misses give a little light and a haptic tap.
+  - A new "⚡ Last-second dodge!" (+25 × combo) rewards changing lane in the last 0.45 s.
+  - Combo milestones at 10/25/50/100/200 give a bonus, a burst, an FOV kick, a haptic and a badge flash.
+  - Bosses show a slim progress bar in the HUD.
+- **Leaderboard:** still in demo mode. Switching it on means filling in `js/lb-config.js` (see LEADERBOARD.md) and bumping the `sw.js` VERSION.

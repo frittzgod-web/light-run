@@ -501,6 +501,7 @@ function moveProps(move) {
 }
 function resetGround() { groundMat.color.setScalar(1); groundMat.emissive.setScalar(0); }
 function startRun() {
+  try { localStorage.setItem('lr_runs', String((+localStorage.getItem('lr_runs') || 0) + 1)); } catch (e) {}
   fadeFlash();
   S.mode = 'run'; S.paused = false;
   RW.visible = true; CW.visible = false; scene.add(player.root); player.root.visible = true; player.root.position.set(0, 0, 0); player.root.rotation.set(0, Math.PI, 0);
@@ -513,10 +514,13 @@ function startRun() {
   const st = M.markPlayed(); if (st) setTimeout(() => toast(`🔥 Day ${st.n} streak! +${st.reward} 💡 light`, 2400), 3600);
   if (needTutorial()) startTutorial(); else toast('Swipe ⬅️ ➡️ lanes · ⬆️ jump · ⬇️ slide · Run Lagos → KM 46!', 3400);
 }
-const START_SPEED = 20, MAX_SPEED = 72, JUMP_H = 2.4;
+const START_SPEED = 22, MAX_SPEED = 72, JUMP_H = 2.4;   // v9: a touch quicker off the line (was 20)
+// v9 gentle start: early in chapter 1 (or a new player's first runs) big vehicle hits only stumble you
+const GENTLE_KM = 3;
+function isGentle() { return !!R && !R.boss && KM(R.dist) < GENTLE_KM && (save.chapter === 1 || (+localStorage.getItem('lr_runs') || 0) < 3); }
 const airT = () => clamp(0.62 - (R.speed - 20) * 0.0022, 0.5, 0.62);
 const slideT = () => clamp(0.72 - (R.speed - 20) * 0.004, 0.5, 0.72);
-function runMove(d) { const n = clamp(R.lane + d, 0, 2); if (S.tut) tutAct(d < 0 ? 'left' : 'right'); if (n !== R.lane) { R.lane = n; sfx.tap(); buzz(8); if (R.grind) endGrind(); } }
+function runMove(d) { const n = clamp(R.lane + d, 0, 2); if (S.tut) tutAct(d < 0 ? 'left' : 'right'); if (n !== R.lane) { R.lane = n; R.moveT = R.t; sfx.tap(); buzz(8); if (R.grind) endGrind(); } }
 function runJump() {
   if (S.tut) tutAct('up');
   if (R.onGround || R.coyote > 0) { const T = airT(); R.g = 8 * JUMP_H / (T * T); R.vy = 4 * JUMP_H / T; R.onGround = false; R.coyote = 0; R.sl = 0; R.jbuf = 0; sfx.jump(); if (R.grind) endGrind(); }
@@ -569,7 +573,7 @@ function pickPattern() {
 const FORCE = { pattern: null };
 function freeLanes() { return shuffle([0, 1, 2]).filter(l => !busyLane(l)); }
 function rowBasic(light) {
-  const sp = R.speed, ch = save.chapter, tr = R.traffic * R.ev.mod.traffic, easy = ch === 1 && KM(R.dist) < 1.6;
+  const sp = R.speed, ch = save.chapter, tr = R.traffic * R.ev.mod.traffic, easy = ch === 1 && KM(R.dist) < 2.0;
   const pool = light ? ['pothole', 'cone'] : easy ? ['pothole', 'cone', 'danfo', 'pothole'] : sp < 40 ? ['pothole', 'cone', 'danfo', 'okada', 'hawker', 'danfo', 'bar'] : ['pothole', 'cone', 'danfo', 'okada', 'truck', 'hawker', 'danfo', 'okada', 'bar'];
   if (!light && tr > 1.25) pool.push('danfo', 'truck');
   if (R.ev.mod.rain) pool.push('pothole', 'pothole');
@@ -662,6 +666,9 @@ function setMoralNPC(m) {
   moralNPC.root.position.set(6.6, 0, -999); RW.add(moralNPC.root);
 }
 const MORAL_AFTER = [1, 4];
+// v9: a roadside encounter never lands in a boss intro or fight; push it past the boss if needed
+function bossWindow(d) { const km = KM(d); for (const id in C.BOSSES) { const B = C.BOSSES[id]; if (km > B.km0 - 0.6 && km < B.km1 + 0.15) return B; } return null; }
+function moralDist(i) { let d = stopDist(MORAL_AFTER[i]) + 40; for (let k = 0; k < 3; k++) { const B = bossWindow(d); if (!B) break; d = (B.km1 + 0.2) * UPK; } return d; }
 /* ---- grind ---- */
 function startGrind() { R.grind = true; R.grindRun = 0; sfx.grind(); popText('⚙️ Grind!', ''); }
 function endGrind() {
@@ -686,10 +693,11 @@ function bossStart(id) {
   const el = $('#bossCard'); el.className = 'boss ' + id; el.innerHTML = `<div class="bi">${B.icon}</div><b>${esc(B.title)}</b><span>${esc(B.sub)}</span>`; void el.offsetWidth; el.classList.add('show');
   clearTimeout(el._t); el._t = setTimeout(() => el.classList.remove('show'), 1900);
   sfx.boss(); shakeDOM(); document.body.classList.add('boss-' + id);
+  const hb = $('#hBoss'); hb.className = 'boss-' + id; hb.querySelector('span').textContent = B.icon; hb.querySelector('em').textContent = B.title.replace(/^(STORM ON |)/, ''); setW(hb.querySelector('b'), 0);
 }
 function bossEnd(win) {
   const b = R.boss; if (!b) return; const B = C.BOSSES[b.id];
-  document.body.classList.remove('boss-' + b.id); $('#gust').classList.remove('show');
+  document.body.classList.remove('boss-' + b.id); $('#gust').classList.remove('show'); $('#hBoss').className = 'hidden';
   R.boss = null; if (!win) return;
   R.bossDone[b.id] = true;
   const pts = b.crashes ? Math.round(B.reward / 2) : B.reward;
@@ -704,6 +712,7 @@ function updateBoss(dt) {
   for (const id in C.BOSSES) { const B = C.BOSSES[id]; if (km >= B.km0 && km < B.km1 && !R.bossDone[id] && (!R.boss || R.boss.id !== id)) bossStart(id); }
   const b = R.boss; if (!b) return;
   const B = C.BOSSES[b.id];
+  setW(el$('hBoss').querySelector('b'), clamp((km - B.km0) / (B.km1 - B.km0), 0, 1) * 100);
   if (km >= B.km1) { bossEnd(true); return; }
   if (km < B.km0) { bossEnd(false); return; }
   if (b.id === 'storm') {
@@ -789,13 +798,16 @@ function updateRun(dt) {
   emitTrails(dt);
   if (ev.mod.rain) for (let i = 0; i < 3; i++) fx.emit(R.px + rand(-14, 14), rand(8, 14), rand(-30, 4), 0, -26, 0, 0.5, 0.18, '#cfe8ff', 0);
   const nextStop = stopDist(R.stopIdx), moral = S.plan.road[R.moralIdx];
-  const moralD = moral ? stopDist(MORAL_AFTER[R.moralIdx]) + 40 : Infinity;
+  const moralD = moral ? moralDist(R.moralIdx) : Infinity;
   R.nextRow -= move;
   if (R.nextRow <= 0) {
     const arrive = R.dist - SPAWN_Z, gz = gateZone(arrive);
     const quiet = gz === 2 || (arrive > moralD - 45 && arrive < moralD + 8) || arrive > RUN_LEN - 40;
     let depth = 0;
-    if (!quiet) depth = spawnRow(gz === 1);
+    if (!quiet) { depth = spawnRow(gz === 1);
+      // v9: the first ~2.5 km get extra light trails in a free lane so the opening never feels empty
+      if (KM(R.dist) < 2.5 && Math.random() < 0.6) { const fl = freeLanes(); if (fl.length) { const x = LANES[fl[0]], n = 4 + (Math.random() * 3 | 0); for (let k = 0; k < n; k++) spawnOrb(x, 1.0, SPAWN_Z - depth - 6 - k * 2.6); } }
+    }
     else if (arrive < RUN_LEN - 40 && Math.random() < 0.5) { const l = Math.floor(Math.random() * 3); for (let k = 0; k < 4; k++) spawnOrb(LANES[l], 1.0, SPAWN_Z - k * 2.6); }
     R.nextRow = depth + (R.tightGap ? rand(3, 6) : rowGap() + rand(0, 6)); R.tightGap = false;
   }
@@ -818,7 +830,8 @@ function updateRun(dt) {
       else if (a.slide && R.sl > 0 && !a.slid) { a.slid = true; R.slides++; dstat('slides'); nearMiss('🛝 Slid under!', 12); }
     }
     if (!a.hit && !a.nm && z > -0.3 && z < a.len / 2 + 0.6) {
-      if (a.big && !a.parked && dx > 1.6 && dx < 3.9 && R.py < 0.8) { a.nm = true; nearMiss('😮 Close one!', 15); }
+      if (!a.wide && !a.slide && !a.surf && R.t - (R.moveT || -9) < 0.45 && dx > 1.6 && dx < 3.9 && R.py < 0.8) { a.nm = true; nearMiss('⚡ Last-second dodge!', 25, true); }   // v9: dodged at the last moment
+      else if (a.big && !a.parked && dx > 1.6 && dx < 3.9 && R.py < 0.8) { a.nm = true; nearMiss('😮 Close one!', 15); }
       else if (a.jump && dx < 1.4 && R.py > 0.6) { a.nm = true; nearMiss('🦘 Leap of faith!', 10); }
     }
     if (z > 22 + a.len / 2) { RW.remove(a.obj); freeObs[a.key].push(a.obj); active.splice(i, 1); }
@@ -899,12 +912,13 @@ function updateRun(dt) {
   camera.lookAt(R.camX, 1.25 + R.py * 0.45, -9);
   // during a roadside bottom sheet, slide the view up so the runner stays visible above it
 
-  const tf = R.fire > 0 || R.burst > 0 ? 76 : 62 + clamp((R.speed - 22) * 0.22, 0, 11);
+  if (R.kick > 0) R.kick = Math.max(0, R.kick - dt * 9);
+  const tf = (R.fire > 0 || R.burst > 0 ? 76 : 62 + clamp((R.speed - 22) * 0.22, 0, 11)) + (R.kick || 0);
   if (Math.abs(camera.fov - tf) > 0.05) { camera.fov += (tf - camera.fov) * Math.min(1, dt * 3); camera.updateProjectionMatrix(); }
   speedFX(dt);
   sunFollow(R.px, 0);
   fx.update(dt, R.speed, 0);
-  if (moral && R.dist >= moralD - 1) {
+  if (moral && R.dist >= moralD - 1 && !R.boss && !bossWindow(R.dist)) {
     R.moralIdx++; clearObs(a => a.obj.position.z > -45); settleRunner();
     openDialog(moral, true, () => { R.inv = 1.2; setMoralNPC(S.plan.road[R.moralIdx]); });
     return;
@@ -934,7 +948,7 @@ function sunFollow(x, z) {
 
 /* ---- HUD ---- */
 let hudT = 0;
-function hudMode(m) { document.body.classList.toggle('inrun', m === 'run'); el$('btnPause').classList.toggle('hidden', m !== 'run' && m !== 'camp'); if (nameTag) nameTag.visible = m !== 'run'; if (m !== 'run') { document.body.classList.remove('boss-storm', 'boss-goslow', 'boss-market'); ['zoneCard', 'bossCard', 'gust'].forEach(id => $('#' + id).classList.remove('show')); } if (m !== 'run') { setOp(el$('darkV'), 0); setOp(el$('speedLines'), 0); $('#hCombo').classList.add('hidden'); $('#hPow').classList.add('hidden'); shieldBubble.visible = false; if (camera.fov !== 62) { camera.fov = 62; camera.updateProjectionMatrix(); } } $('#hud').classList.toggle('hidden', !m); $('#prompt').classList.add('hidden'); $('#hVerse').classList.toggle('hidden', m !== 'run'); hideGateUI(); }
+function hudMode(m) { document.body.classList.toggle('inrun', m === 'run'); el$('btnPause').classList.toggle('hidden', m !== 'run' && m !== 'camp'); if (nameTag) nameTag.visible = m !== 'run'; if (m !== 'run') { document.body.classList.remove('boss-storm', 'boss-goslow', 'boss-market'); ['zoneCard', 'bossCard', 'gust'].forEach(id => $('#' + id).classList.remove('show')); $('#hBoss').className = 'hidden'; } if (m !== 'run') { setOp(el$('darkV'), 0); setOp(el$('speedLines'), 0); $('#hCombo').classList.add('hidden'); $('#hPow').classList.add('hidden'); shieldBubble.visible = false; if (camera.fov !== 62) { camera.fov = 62; camera.updateProjectionMatrix(); } } $('#hud').classList.toggle('hidden', !m); $('#prompt').classList.add('hidden'); $('#hVerse').classList.toggle('hidden', m !== 'run'); hideGateUI(); }
 function hud(prog, info) {
   if ((hudT -= 1) > 0) return; hudT = 6;
   setTxt(el$('hScore'), '✨ ' + S.score); setW(el$('hLant'), S.lantern); setL(el$('hFloor'), S.floor);
@@ -942,7 +956,7 @@ function hud(prog, info) {
     const i = Math.min(R.stopIdx, C.STOPS.length - 1);
     const km = KM(R.dist);
     const zm = R.zoneMsg && R.zoneMsg.t > 0 && !(R.flash > 0) ? R.zoneMsg.txt : null;
-    setTxt(el$('hInfo'), zm ? zm : R.flash > 0 ? `📍 ${C.STOPS[R.stopIdx - 1]} ✓ · ${Math.round(R.speed * 3.6)} km/h` : `➜ ${C.STOPS[i].replace(/ \(.*\)/, '')} ${Math.max(0, C.STOP_KM[i] - km).toFixed(1)} km · ${Math.round(R.speed * 3.6)} km/h` /* v8: shorter so it never truncates beside combo/power chips (the map strip shows total KM) */);
+    setTxt(el$('hInfo'), zm ? zm : R.flash > 0 ? `📍 ${C.STOPS[R.stopIdx - 1]} ✓ · ${Math.round(R.speed * 3.6)} km/h` : `➜ ${C.STOPS[i].replace(/ \(.*\)/, '')} ${Math.max(0, C.STOP_KM[i] - km).toFixed(1)} km${R.combo >= 3 && (R.fire > 0 || R.magnet > 0 || R.shield) ? '' : ` · ${Math.round(R.speed * 3.6)} km/h`}` /* v8: shorter so it never truncates beside combo/power chips (the map strip shows total KM) */);
     const fl = R.flash > 0 || !!zm; if (el$('hInfo')._fl !== fl) { el$('hInfo')._fl = fl; el$('hInfo').classList.toggle('flash', fl); }
     const pc = km / C.TOTAL_KM * 100; setL(el$('mapMe'), pc); setW(el$('mapFill'), pc);
   } else if (info) setTxt(el$('hInfo'), info);
@@ -969,14 +983,23 @@ function settleRunner() {
   camera.position.set(R.camX, 3.0, 7.6); camera.lookAt(R.camX, -1.9, -9);
 }
 const comboMult = () => 1 + Math.min(4, Math.floor(R.combo / 8));
+const COMBO_MILES = [[10, 'Faithful!'], [25, 'Steadfast!'], [50, 'More than a conqueror!'], [100, 'Hallelujah!'], [200, 'Unstoppable grace!']];
+function comboMilestone(m, word, mult) {   // v9: celebrate combo milestones (bonus, burst, FOV kick, haptic)
+  const bonus = m * 5; S.score += bonus; addLantern(2); R.kick = SET.reduceMotion ? 0 : 7; buzz([10, 40, 18]); sfx.power(); scorePop();
+  popText(`🎉 ${m} combo · ${word} +${bonus}${mult ? ` · x${mult}` : ''}`, 'big');
+  for (let k = 0; k < 30; k++) fx.emit(R.px, 1.4, 0, rand(-5, 5), rand(1, 6), rand(-4, 2), 0.8, 0.55, pick(['#ffd23f', '#fff3a0', '#ff8a3d']), 0.6);
+  const el = $('#hCombo'); el.classList.remove('mile'); void el.offsetWidth; el.classList.add('mile');
+}
 function addCombo(n) {
-  const before = comboMult(); R.combo += n; R.comboT = 2.8;
-  if (comboMult() > before) { popText(`🔥 Combo x${comboMult()}!`, 'big'); sfx.stop(); if (comboMult() >= 4) dstat('combo4', 1, 'max'); }
+  const before = comboMult(), c0 = R.combo; R.combo += n; R.comboT = 2.8;
+  let mile = false; for (const [m, w] of COMBO_MILES) if (c0 < m && R.combo >= m) { comboMilestone(m, w, comboMult() > before ? comboMult() : 0); mile = true; }
+  if (comboMult() > before && mile) { sfx.stop(); if (comboMult() >= 4) dstat('combo4', 1, 'max'); }
+  else if (comboMult() > before) { popText(`🔥 Combo x${comboMult()}!`, 'big'); sfx.stop(); if (comboMult() >= 4) dstat('combo4', 1, 'max'); }
   comboHUD();
 }
 function loseCombo() { if (R.combo >= 8) popText('Combo lost', 'dim'); R.combo = 0; R.comboT = 0; comboHUD(); }
 function comboHUD() { const el = $('#hCombo'); if (R.combo >= 3) { el.classList.remove('hidden'); el.textContent = `x${comboMult()} · ${R.combo}`; el.classList.remove('pop'); void el.offsetWidth; el.classList.add('pop'); } else el.classList.add('hidden'); }
-function nearMiss(txt, pts) { const p = pts * comboMult(); S.score += p; addCombo(2); popText(`${txt} +${p}`); sfx.whoosh(); scorePop(); }
+function nearMiss(txt, pts, big) { const p = pts * comboMult(); S.score += p; addCombo(2); addLantern(0.5); popText(`${txt} +${p}`, big ? 'big' : ''); sfx.whoosh(); scorePop(); buzz(big ? 14 : 6); R.nearN = (R.nearN || 0) + 1; }
 function popText(txt, cls = '') {
   const el = document.createElement('div'); el.className = 'popt ' + cls; el.textContent = txt;
   el.style.left = (50 + rand(-18, 18)) + '%'; $('#pops').appendChild(el); if ($('#pops').children.length > 3) $('#pops').firstElementChild.remove(); setTimeout(() => el.remove(), 1100);
@@ -997,7 +1020,15 @@ function onHit(a) {
   }
   for (let k = 0; k < 16; k++) fx.emit(R.px + rand(-0.6, 0.6), rand(0.3, 1.5), rand(-0.5, 0.5), rand(-3, 3), rand(1, 3), rand(-2, 2), 0.7, 0.8, '#d9b38c', 2);
   buzz(big ? 45 : 22);
-  if (big || R.t - R.lastStumble < (R.boss && R.boss.id === 'storm' ? 7 : 4)) { crash(big ? BIG_NAMES[a.type] : 'You stumbled twice and the darkness caught up.'); return true; }
+  const gentle = isGentle();
+  if (big && gentle) {   // v9: early on, a danfo/truck knock is a hard stumble, not the end of the run
+    knock(a); R.lastStumble = R.t; R.stumble = 0.9; R.inv = 1.6; R.shake = 0.6; R.dark = 2.5; S.hits++;
+    loseCombo(); S.score = Math.max(0, S.score - 40); addLantern(-8); sfx.hit(); shakeDOM(true);
+    popText('Bumped! −40', 'bad');
+    toast(R.gentleTold ? '🚐 Ouch! Keep going, pilgrim!' : '🚐 Ouch! Near Lagos a bump only slows you. After KM 3, big vehicles end the run!', R.gentleTold ? 1400 : 2600); R.gentleTold = true;
+    return false;
+  }
+  if (big || (!gentle && R.t - R.lastStumble < (R.boss && R.boss.id === 'storm' ? 7 : 4))) { crash(big ? BIG_NAMES[a.type] : 'You stumbled twice and the darkness caught up.'); return true; }
   R.lastStumble = R.t; R.stumble = 0.9; R.inv = 1.0; R.shake = 0.45; R.dark = 4; S.hits++;
   loseCombo(); S.score = Math.max(0, S.score - 30); addLantern(-6); sfx.hit(); shakeDOM();
   popText('Stumbled! −30', 'bad');
@@ -1127,7 +1158,7 @@ function prepGate(idx) {
   const q = S.plan.quiz[idx % S.plan.quiz.length];
   const order = shuffle([0, 1, 2]);           // order[lane] = option index
   const g = { idx, q, order, correctLane: order.indexOf(q[2]), called: false, shown: false, done: false };
-  gateLanes.forEach((L, i) => { drawGateLabel(L.lab, q[1][order[i]], GATE_COLS[i]); L.curtain.material.color.set(GATE_COLS[i]); L.curtain.material.opacity = 0.3; });
+  gateLanes.forEach((L, i) => { drawGateLabel(L.lab, C.shortOpt(q[1][order[i]]), GATE_COLS[i]); L.curtain.material.color.set(GATE_COLS[i]); L.curtain.material.opacity = 0.3; });
   return g;
 }
 // slim question bar: max 2 lines, font shrinks to fit
@@ -1136,7 +1167,7 @@ const GL_ARROWS = ['◀', '▲', '▶'];
 function showGateQ(g) {
   const hq = $('#hQ'); hq.classList.remove('hidden', 'ok', 'bad', 'slide'); void hq.offsetWidth; hq.classList.add('slide');
   $('#hQq').textContent = '📖 ' + g.q[0]; $('#hQo').textContent = ''; document.body.classList.add('qon'); fitBar($('#hQq'));
-  document.querySelectorAll('#gLabels .gl').forEach((el, i) => { el.innerHTML = `<i>${GL_ARROWS[i]}</i><span>${esc(g.q[1][g.order[i]])}</span>`; el.classList.remove('ok', 'dim'); });
+  document.querySelectorAll('#gLabels .gl').forEach((el, i) => { const t = C.shortOpt(g.q[1][g.order[i]]); el.innerHTML = `<i>${GL_ARROWS[i]}</i><span>${esc(t)}</span>`; el.classList.remove('ok', 'dim'); el.classList.toggle('long', t.length > 11); });
   $('#gLabels').classList.remove('hidden'); gateLanes.forEach(L => L.panel.visible = false); sfx.stop();
 }
 // DOM labels pinned above each 3D gate: readable at any distance, spread so they never overlap
@@ -1274,6 +1305,7 @@ const DOOR = [0, -72];
 const ZONES = [['Main Auditorium', -50, 50, -140, -68], ['Prayer Ground', -70, -12, -78, -30], ['Accommodation', -75, -12, -25, 55], ['Food Court', 18, 75, -25, 55], ['Main Gate', -80, 80, 60, 115]];
 // camp world is built lazily on first visit (keeps first load + first frame light)
 let campBuilt = false;
+const campInst = [];   // v9: [instancedMesh, data, radius]; trees/palms between the camera and the player are hidden
 function buildCamp() {
   if (campBuilt) return; campBuilt = true;
   const solids = [], flats = [];
@@ -1314,6 +1346,22 @@ function buildCamp() {
   box(solids, '#6a1b9a', 0, 2.4, -128, 34, 2, 10); box(solids, '#ffd23f', 0, 8, -132, 1, 9, 0.6); box(solids, '#ffd23f', 0, 10, -132, 6, 1, 0.6);
   for (let r = 0; r < 9; r++) for (let c = -6; c <= 6; c++) if (c !== 0) box(solids, '#e53935', c * 5.5, 1.8, -86 - r * 3.6, 4.6, 0.8, 0.9);
   colliders.push([-48, 48, -137, -76.5]);
+  // v9: a fuller camp: pilgrims' tents, avenue banners on poles, mats and coolers, bunting at the food court
+  const tcols = ['#e53935', '#1e88e5', '#43a047', '#fdd835', '#8e24aa', '#fb8c00', '#00897b'];
+  [[26, 80], [36, 85], [47, 80], [58, 85], [30, 64], [52, 64], [-30, 70], [-44, 72], [-58, 69], [-70, 76], [62, 74], [-66, 60]].forEach(([x, z], i) => {
+    const c = tcols[i % tcols.length], r = (i * 0.7) % 1.2 - 0.6;
+    solids.push(P(G.cone, c, x, 1.5, z, 0, Math.PI / 4 + r, 0, 3.4, 3.0, 3.4), P(G.box, '#3e2723', x + Math.sin(r) * 2.3, 0.65, z + Math.cos(r) * 2.3, 0, r, 0, 1.0, 1.3, 0.06));
+    box(flats, '#5d4037', x + Math.sin(r) * 3.6, 0.05, z + Math.cos(r) * 3.6, 2.2, 0.03, 1.4, r);
+    box(solids, '#1565c0', x + 2.6, 0.35, z + 1.2, 0.8, 0.7, 0.55); coll(x, z, 4.4, 4.4);
+  });
+  const bcols = ['#6a1b9a', '#ffd23f', '#1565c0', '#c62828'];
+  for (let z = 92, i = 0; z > -62; z -= 14, i++) for (const sx of [-1, 1]) {
+    const x = sx * 10.2, c = bcols[(i + (sx > 0 ? 1 : 0)) % bcols.length];
+    box(solids, '#9e9e9e', x, 2.6, z, 0.16, 5.2, 0.16); box(solids, c, x + sx * 0.12, 3.7, z, 0.06, 2.6, 1.2); box(solids, '#ffffff', x + sx * 0.13, 4.5, z, 0.07, 0.35, 1.25); coll(x, z, 0.4, 0.4);
+  }
+  for (let k = 0; k < 9; k++) { const x = 24 + k * 4.2; box(solids, cols[k % cols.length], x, 4.4, 20 + Math.sin(k) * 0.4, 0.05, 0.6, 0.5); }
+  box(solids, '#9e9e9e', 22, 2.3, 20, 0.15, 4.6, 0.15); box(solids, '#9e9e9e', 61, 2.3, 20, 0.15, 4.6, 0.15); box(solids, '#ffffff', 41.5, 4.75, 20, 39, 0.05, 0.05);
+  for (const [x, z] of [[-16, 50], [16, 46], [-16, -8], [16, -30], [-24, 92], [22, 94]]) { box(flats, pick(['#c62828', '#2e7d32', '#1565c0', '#f9a825']), x, 0.05, z, 2.6, 0.03, 1.6, rand(-0.5, 0.5)); box(solids, '#eceff1', x + 1.6, 0.3, z - 0.8, 0.7, 0.6, 0.5); }
   const flatMesh = new THREE.Mesh(merge(flats), VC); flatMesh.receiveShadow = true; CW.add(flatMesh);
   CW.add(mergedMesh(solids, 0.07, false));
   const gtex = grassTex.clone(); gtex.repeat.set(40, 40); gtex.needsUpdate = true;
@@ -1331,9 +1379,9 @@ function buildCamp() {
   const tData = []; let tries = 0;
   while (tData.length < 46 && tries++ < 3000) { const x = rand(-95, 95), z = rand(-70, 96); if (isFree(x, z, 3)) tData.push({ x, z, s: rand(0.8, 1.3), r: rand(0, 6) }); }
   tData.forEach(t => colliders.push([t.x - 0.6, t.x + 0.6, t.z - 0.6, t.z + 0.6]));
-  const trees = swayInst(treeGeo(), tData.length, 0.07); writeInst(trees, tData); CW.add(trees);
+  const trees = swayInst(treeGeo(), tData.length, 0.07); writeInst(trees, tData); CW.add(trees); campInst.push([trees, tData, 3.4]);
   const pData = []; for (let z = 92; z > -64; z -= 13) pData.push({ x: 8, z, s: 1, r: z }, { x: -8, z: z - 6, s: 1.1, r: z });
-  const cp = swayInst(palmGeo(), pData.length, 0.06); writeInst(cp, pData); CW.add(cp);
+  const cp = swayInst(palmGeo(), pData.length, 0.06); writeInst(cp, pData); CW.add(cp); campInst.push([cp, pData, 2.2]);
   const lData = []; for (let z = 96; z > -64; z -= 20) lData.push({ x: 6.5, z, s: 1, r: 0 }, { x: -6.5, z: z - 10, s: 1, r: 0 });
   const cl = new THREE.InstancedMesh(streetLightGeo(), VC, lData.length); outline(cl, 0.05); writeInst(cl, lData); CW.add(cl);
   for (const [x, z, r] of [[-22, 86, 0.2], [-30, 84, -0.1], [-38, 87, 0.15], [32, 92, 1.57]]) { const d = danfo(); d.position.set(x, 0, z); d.rotation.y = r; CW.add(d); colliders.push([x - 2.6, x + 2.6, z - 2.8, z + 2.8]); }
@@ -1367,6 +1415,11 @@ function startCamp() {
   const WP = [[0, 95], [0, 60], [0, 20], [0, -20], [0, -60], [-30, 20], [-60, 20], [30, 20], [60, 20], [-30, -34], [-55, -34], [20, 70]];
   for (let i = 0; i < 10; i++) { const h = { root: bakedHuman(randomLook({ gender: pick(['m', 'f']), kid: Math.random() < 0.15, old: Math.random() < 0.15 }), 'walk', 6) }; const w = pick(WP); h.root.position.set(w[0] + rand(-2, 2), 0, w[1] + rand(-2, 2)); h.wp = pick(WP); CW.add(h.root); K.all.push(h); K.walkers.push(h); }
   for (const g of [[-26, 30], [36, 20], [-48, -28], [12, 84], [52, 18], [-14, -20]]) { const h = { root: bakedHuman(randomLook({ gender: pick(['m', 'f']) }), 'idle', 1) }; h.root.position.set(g[0], 0, g[1]); h.root.rotation.y = rand(0, 6); CW.add(h.root); K.all.push(h); }
+  // v9: more people: small chatting groups along the avenue and around the tents (baked, cheap to draw)
+  for (const [gx, gz] of [[-14, 62], [15, 52], [-14, 28], [15, 0], [-14, -28], [14, -48], [34, 74], [-50, 78], [22, 34], [-24, 53]].slice(0, TIER === 'low' ? 4 : 10)) {
+    const n = 2 + (Math.random() * 2 | 0);
+    for (let k = 0; k < n; k++) { const a = k / n * Math.PI * 2, h = { root: bakedHuman(randomLook({ gender: pick(['m', 'f']), kid: Math.random() < 0.2, old: Math.random() < 0.12 }), 'idle', 1) }; h.root.position.set(gx + Math.cos(a) * 1.1, 0, gz + Math.sin(a) * 1.1); h.root.rotation.y = -a - Math.PI / 2; CW.add(h.root); K.all.push(h); }
+  }
   const ITEMS = shuffle([[-14, 60], [20, 50], [-50, 58], [64, 52], [-70, -10], [70, -16], [-30, -84], [26, -60], [-60, -58], [40, 70], [-22, 12], [12, -40]]).slice(0, S.plan.quest.n);
   for (const [x, z] of ITEMS) { const s = textSprite(S.plan.quest.item, 1.3); s.material.depthTest = true; s.position.set(x, 1.3, z); CW.add(s); K.items.push(s); K.all.push({ root: s }); }
   const fSpot = [[-44, -38], [-34, -36], [-56, -40], [-46, -56], [-30, -52], [-60, -52]].find(p => !blocked(p[0], p[1], 0.8) && !usedSpots.has(p + '')) || [-24, -36];
@@ -1376,7 +1429,7 @@ function startCamp() {
   player.root.position.set(0, 0, 104); player.root.rotation.set(0, Math.PI, 0); scene.add(player.root); player.root.visible = true;
   K.occ = []; const _bx = new THREE.Box3(), _sz = new THREE.Vector3(), _c = new THREE.Vector3(), skip = new Set(K.all.map(o => o.root));
   for (const o of CW.children) { if (skip.has(o) || o.isSprite) continue; _bx.setFromObject(o); _bx.getSize(_sz); _bx.getCenter(_c); if (_sz.y > 1.6 && Math.max(_sz.x, _sz.z) < 9) K.occ.push([o, _c.x, _c.z, Math.max(_sz.x, _sz.z) / 2]); }
-  camera.position.set(0, 8.6, 111.6);
+  camera.position.set(0, 9.8, 116.2);
   hudMode('camp');
   toast('Drag to walk · Tap the ground to go there · Talk to pilgrims with ❗', 3600);
   setTimeout(() => { if (!S.paused && S.mode === 'camp') toast(`Side quest: ${S.plan.quest.text}`, 3600); }, 4000);
@@ -1443,8 +1496,9 @@ function updateCamp(dt) {
   doorBeacon.visible = mc >= DOOR_NEED && !toDoor; doorBeacon.position.set(DOOR[0], 25, DOOR[1]);
   const ang = Math.atan2(target[0] - K.x, target[1] - K.z);
   arrow.position.set(K.x + Math.sin(ang) * 1.7, 0.3, K.z + Math.cos(ang) * 1.7); arrow.rotation.y = ang; arrow.visible = td > 4;
-  camera.position.lerp(_pv.set(K.x, 8.6, K.z + 7.6), Math.min(1, dt * 5)); camera.lookAt(K.x, 1.0, K.z + 0.2);
-  for (const [o, ox, oz, r] of K.occ) o.visible = !(Math.abs(ox - K.x) < r + 1.2 && oz > K.z + 0.6 - r * 0.3 && oz < K.z + 8.5 + r * 0.5);
+  camera.position.lerp(_pv.set(K.x, 9.8, K.z + 12.2), Math.min(1, dt * 5)); camera.lookAt(K.x, 1.0, K.z - 2.6);   // v9: pulled back to show more of the camp
+  if ((K.instT = (K.instT || 0) - dt) <= 0) { K.instT = 0.12; for (const [m, data, r] of campInst) { let ch = false; for (const t of data) { const h = Math.abs(t.x - K.x) < r + 1.2 && t.z > K.z + 0.4 && t.z < K.z + 13.5; if (h !== !!t.hide) { t.hide = h; ch = true; } } if (ch) writeInst(m, data); } }
+  for (const [o, ox, oz, r] of K.occ) o.visible = !(Math.abs(ox - K.x) < r + 1.2 && oz > K.z + 0.6 - r * 0.3 && oz < K.z + 12.6 + r * 0.5);
   sunFollow(K.x, K.z);
   lanternLight.intensity = 1.6 * S.lantern / 100;
   fx.update(dt, 0, 0); lanternHalo(0);
@@ -1652,6 +1706,7 @@ function paintSelect(rebuild = true) {
   if (cBuy) { const it = M.shopItem(cBuy), w = M.wallet(); body += `<div class="cbuy"><b>${it.icon} ${esc(it.name)}</b> · 💡 ${it.price} <span class="small">(you have ${w.light})</span><button class="btn primary slim" id="cBuyBtn" ${w.light < it.price ? 'disabled' : ''}>${w.light < it.price ? `Need ${it.price - w.light} more` : 'Unlock'}</button></div>`; }
   $('#cbody').innerHTML = body;
   $('#ctabs').querySelectorAll('[data-tab]').forEach(b => b.onclick = () => { sfx.tap(); cTab = b.dataset.tab; cBuy = null; paintSelect(false); b.scrollIntoView({ inline: 'center', block: 'nearest' }); });
+  ctHint();
   const set = (k, v) => { if (k === 'pattern') v = +v; selLook[k] = v; if (k === 'gender') { selLook = LK.fixLook({ ...selLook, gender: v }); selG = v; } if (['top', 'topColor', 'topColor2', 'pattern', 'bottom', 'bottomColor', 'head', 'headColor'].includes(k)) selLook.preset = null; sfx.tap(); paintSelect(); };
   $('#cbody').querySelectorAll('button[data-k]').forEach(b => b.onclick = () => set(b.dataset.k, b.dataset.v));
   $('#cbody').querySelectorAll('input[type=color]').forEach(inp => inp.oninput = () => { selLook[inp.dataset.k] = inp.value; selLook.preset = null; refreshPreview(); });
@@ -1746,6 +1801,10 @@ $('#btnDaily').addEventListener('click', () => {
   $('#dGo').onclick = () => { hide('modal'); (save ? $('#btnContinue') : $('#btnNew')).click(); };
 });
 /* ---- shop ---- */
+// v9: creator tab row scroll hint (fade edges + a nudging › arrow while more tabs are off-screen)
+function ctHint() { const t = $('#ctabs'), w = $('#ctwrap'); if (!t || !w) return; requestAnimationFrame(() => { w.classList.toggle('more-r', t.scrollLeft + t.clientWidth < t.scrollWidth - 4); w.classList.toggle('more-l', t.scrollLeft > 4); }); }
+$('#ctabs').addEventListener('scroll', ctHint, { passive: true }); addEventListener('resize', ctHint);
+$('#ctMore').addEventListener('click', e => { e.stopPropagation(); sfx.tap(); const t = $('#ctabs'); t.scrollBy({ left: t.clientWidth * 0.7, behavior: 'smooth' }); });
 let shopTab = 'outfits', shopFrom = 'title', shopSel = null;
 function openShop(from) {
   shopFrom = from; hide('title'); hide('select'); S.mode = 'select'; S.shop = true;
@@ -1825,7 +1884,8 @@ function planChapter() {
   const ch = save.chapter;
   const event = C.EVENTS[(ch - 1) % C.EVENTS.length];
   const enc = drawPool('enc', C.ENCOUNTERS, 8, a => a.id);
-  const quiz = drawPool('gate', C.GATE_Q, C.STOPS.length - 1, a => a[0]);
+  let quiz = drawPool('gate', C.GATE_Q, C.STOPS.length - 1, a => a[0]);
+  if (ch === 1) { const e = C.GATE_Q.find(q => q[0] === C.EASY_FIRST_Q) || C.GATE_Q[0]; quiz = [e, ...quiz.filter(q => q[0] !== e[0])].slice(0, quiz.length); }   // v9: an easy warm-up question at Ojota
   const road = drawPool('road', C.ROADSIDE, ch % 3 === 0 ? 1 : 2, a => a.id);
   const verse = pickVerse(ch);
   const door = drawPool('door', C.DOOR, 1, a => a.id)[0];
@@ -1933,6 +1993,7 @@ function pauseGame(reason) {
   if (!(S.mode === 'run' || S.mode === 'camp') || S.userPause) return;
   S.userPause = { prev: S.paused }; S.paused = true;
   $('#pauseNote').textContent = reason === 'away' ? 'Paused while you were away.' : 'Take a breath. The road will wait for you.';
+  const cpb = $('#btnPauseCP'), canCP = S.mode === 'run' && R && R.cp && !$('#modal').classList.contains('show'); cpb.classList.toggle('hidden', !canCP); if (canCP) cpb.textContent = R.cp.stopIdx > 0 ? `↩ Restart from ${R.cp.name} bus stop` : '↩ Restart from Lagos (the start)';
   show('pause'); if (actx && actx.state === 'running') actx.suspend();
 }
 function resumeGame() {
@@ -1942,6 +2003,8 @@ function resumeGame() {
 }
 $('#btnPause').addEventListener('click', e => { e.stopPropagation(); ensureAudio(); sfx.tap(); pauseGame(); });
 $('#btnResume').addEventListener('click', () => { sfx.tap(); resumeGame(); });
+// v9: restart from the last bus stop straight from the pause menu
+$('#btnPauseCP').addEventListener('click', () => { if (S.mode !== 'run' || !R || !R.cp) return; sfx.tap(); S.userPause = null; hide('pause'); ['dialog', 'settings', 'howto'].forEach(hide); S.dlgOpen = false; S.slowmo = false; document.body.classList.remove('dlg-run'); setMoralNPC(S.plan.road[R.moralIdx] || null); bankRun(false); restartFrom(R.cp); });
 $('#btnPauseSet').addEventListener('click', openSettings);
 $('#btnPauseHow').addEventListener('click', () => { sfx.tap(); show('howto'); });
 $('#btnQuit').addEventListener('click', () => { sfx.tap(); S.userPause = null; hide('pause'); ['dialog', 'modal', 'settings', 'howto'].forEach(hide); S.paused = false; S.dlgOpen = false; if (R && R.boss) bossEnd(false); enterTitle(); });
@@ -1954,7 +2017,7 @@ document.addEventListener('visibilitychange', () => {
 const TUT = [
   ['left', '👈', 'Swipe LEFT to change lane'], ['right', '👉', 'Swipe RIGHT to change lane'],
   ['up', '👆', 'Swipe UP (or tap) to jump', 'Jump potholes, cones and ramps'], ['down', '👇', 'Swipe DOWN to slide', 'Slide under barriers and low signs'],
-  ['gate', '⛩️', 'Answer gates', 'At each bus stop a Bible question shows at the top. Swipe into the lane with the right answer and run through its glowing gate!'],
+  ['gate', '⛩️', 'Answer gates', 'Question at the top → swipe into the right answer\'s gate!'],
 ];
 const needTutorial = () => !AUTO && !params.has('notut') && !localStorage.getItem('lr3d_tut');
 let tutTimer = 0;
@@ -1971,7 +2034,7 @@ function startTutorial() {
 function tutAct(kind) {
   const st = TUT[S.tut.step]; if (!st || st[0] !== kind || S.tut.wait) return;
   S.tut.wait = true; buzz(12); sfx.stop(); $('#tutTxt').innerHTML = '✅ Nice!'; $('#tut .tutbox').classList.add('ok');
-  clearTimeout(tutTimer); tutTimer = setTimeout(() => { if (!S.tut) return; S.tut.wait = false; S.tut.step++; paintTut(); if (TUT[S.tut.step][0] === 'gate') tutTimer = setTimeout(() => endTutorial(), 5200); }, 650);
+  clearTimeout(tutTimer); tutTimer = setTimeout(() => { if (!S.tut) return; S.tut.wait = false; S.tut.step++; paintTut(); if (TUT[S.tut.step][0] === 'gate') tutTimer = setTimeout(() => endTutorial(), 4000); }, 650);
 }
 function endTutorial(silent) {
   clearTimeout(tutTimer); if (!S.tut) return;
@@ -2075,8 +2138,9 @@ window.LR = {
   get state() { return { mode: S.mode, paused: S.paused, score: S.score, lantern: S.lantern, chapter: save && save.chapter, stop: R && R.stopIdx, dist: R && R.dist, met: K && K.met, fps: perf.fps, calls: renderer.info.render.calls, tris: renderer.info.render.triangles, lowered: perf.lowered, tier: TIER, pr: PR }; },
   skipRun() { if (R) { R.dist = RUN_LEN - 3; R.stopIdx = C.STOPS.length - 1; R.moralIdx = 3; setMoralNPC(null); } },
   near(i) { if (!K) return; const h = K.enc[i]; K.x = h.root.position.x; K.z = h.root.position.z + 2.2; K.tx = null; },
+  campAt(x, z) { if (K) { K.x = x; K.z = z; K.tx = null; } },
   door() { if (K) { K.x = DOOR[0]; K.z = DOOR[1] + 3; } },
-  hit(t) { if (R && S.mode === 'run') onHit({ type: t, jump: OBS[t].jump, obj: new THREE.Object3D() }); },
+  hit(t) { if (R && S.mode === 'run') onHit({ type: t, jump: OBS[t].jump, big: !!OBS[t].big, obj: new THREE.Object3D() }); },
   power(k) { if (R) activatePower(k); },
   get riseOk() { return R ? R.riseOk : -1; },
   study() { if (K) { K.x = K.funke.root.position.x; K.z = K.funke.root.position.z + 2.2; K.tx = null; } },
@@ -2084,11 +2148,14 @@ window.LR = {
   get run() { return R ? { combo: R.combo, fire: R.fire, shield: R.shield, magnet: R.magnet, dark: R.dark, revived: R.revived, cp: R.cp && R.cp.name, speed: R.speed, vGot: R.vGot, parts: S.plan.verse.parts.length, quizRight: S.quizRight, quizTotal: S.quizTotal, moral: R.moralIdx } : null; },
   get encCount() { return K ? K.enc.length : 0; },
   pattern(k) { FORCE.pattern = k; if (R) R.nextRow = Math.min(R.nextRow, 1); },
-  km(k) { if (!R) return; if (R.boss) bossEnd(false); hideGateUI(); R.dist = k * UPK; R.stopIdx = STOP_D.findIndex(d => d > R.dist); R.gate = null; R.kmInt = Math.floor(k); R.nextScrollD = R.dist + 100; clearObs(); R.nextRow = 30; R.zone = -1; },
+  km(k) { if (!R) return; if (R.boss) bossEnd(false); hideGateUI(); R.dist = k * UPK; R.stopIdx = STOP_D.findIndex(d => d > R.dist); R.gate = null; R.kmInt = Math.floor(k); R.nextScrollD = R.dist + 100; clearObs(); R.nextRow = 30; R.zone = -1;
+    let mi = 0; while (mi < MORAL_AFTER.length && moralDist(mi) < R.dist - 1) mi++; if (mi !== R.moralIdx) { R.moralIdx = mi; setMoralNPC(S.plan.road[mi] || null); } },
   get j() { return R ? { km: KM(R.dist), zone: zoneAt(KM(R.dist)).id, boss: R.boss && R.boss.id, bossDone: Object.keys(R.bossDone), py: R.py, onGround: R.onGround, sl: R.sl, grind: R.grind, grindM: R.grindM, roofs: R.roofs, slides: R.slides, speed: R.speed, lane: R.lane, burst: R.burst } : null; },
   get meta() { return { wallet: M.wallet(), daily: M.dailyState(), list: M.dailyFor().map(c => c.id), streak: M.streak(), best: M.bestKm(), room: M.myRoom() }; },
   give(n) { M.earn(n); },
   debugPx() { return R ? R.px : null; },
+  combo(n) { if (R) addCombo(n); },
+  get v9() { return R ? { gentle: isGentle(), moralD: MORAL_AFTER.map((_, i) => +KM(moralDist(i)).toFixed(2)), moralIdx: R.moralIdx, nearN: R.nearN || 0, kick: R.kick || 0, dlg: !!S.dlgOpen, fov: +camera.fov.toFixed(1) } : null; },
   look(l, rot) { if (S.mode !== 'select') return false; selLook = LK.fixLook({ ...selLook, ...l }); selG = selLook.gender; if (rot != null) selRot = rot; selIdle = -999; paintSelect(); return true; },
   face(e) { if (player) setExpression(player, e, 3); },
   dbg() { // draw-call breakdown of visible meshes (debug)
