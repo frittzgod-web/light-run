@@ -203,6 +203,10 @@ export function lanternMesh(kind = 'hurricane') {
       P(new THREE.TorusGeometry(0.05, 0.012, 4, 8), '#ffd23f', 0, 0.26, 0)];
     g.add(mergedMesh(parts, 0.012, false));
     core = new THREE.Mesh(new THREE.SphereGeometry(0.05, 8, 6), new THREE.MeshBasicMaterial({ color: 0xfff6b0 })); core.position.y = -0.04; g.add(core);
+  } else if (kind === 'oil') {   // v10: a golden oil lamp (Leviticus 24:2)
+    const parts = [P(G.sphLo, '#ffc233', 0, 0.02, 0, 0, 0, 0, 0.3, 0.13, 0.2), P(G.cone, '#ffb300', 0.17, 0.04, 0, 0, 0, -1.35, 0.08, 0.16, 0.08), P(new THREE.TorusGeometry(0.05, 0.015, 4, 8), '#e09a00', -0.16, 0.04, 0), P(new THREE.TorusGeometry(0.05, 0.012, 4, 8), '#ffb300', 0, 0.3, 0), P(G.cyl6, '#ffb300', 0, 0.17, 0, 0, 0, 0, 0.02, 0.2, 0.02)];
+    g.add(mergedMesh(parts, 0.012, false));
+    core = new THREE.Mesh(new THREE.ConeGeometry(0.045, 0.13, 8), new THREE.MeshBasicMaterial({ color: 0xff9a1e })); core.position.set(0.23, 0.13, 0); g.add(core);
   } else if (kind === 'flame') {
     const parts = [P(G.cyl6, '#5d4037', 0, -0.04, 0, 0, 0, 0, 0.08, 0.16, 0.08), P(G.cyl6, '#8d6e63', 0, 0.05, 0, 0, 0, 0, 0.14, 0.04, 0.14), P(new THREE.TorusGeometry(0.05, 0.012, 4, 8), '#ffb300', 0, 0.3, 0)];
     g.add(mergedMesh(parts, 0.012, false));

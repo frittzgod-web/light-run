@@ -77,3 +77,27 @@ All pass. Against v7, the same test reproduces the bug: `0 → 2` and `2 → 0`.
   - Combo milestones at 10/25/50/100/200 give a bonus, a burst, an FOV kick, a haptic and a badge flash.
   - Bosses show a slim progress bar in the HUD.
 - **Leaderboard:** still in demo mode. Switching it on means filling in `js/lb-config.js` (see LEADERBOARD.md) and bumping the `sw.js` VERSION.
+
+## E. v10 (16 Nov 2026): the Bible map and the first three vision worlds
+
+**What's new**
+- **Bible map** (📖 button on the title screen): all 66 books in 10 sections. Genesis, Exodus and Leviticus are playable; the other 63 say "Soon". Books unlock in order (Exodus after Genesis, Leviticus after Exodus). Each tile shows stars, and a book card shows the intro, the boss, your best score and the verses you've saved.
+- **Vision gates on the journey:** about 70 m past the Ojota bus stop a glowing portal opens into a book world (once per chapter). You run the vision with 3 question gates, verse scrolls and a boss, then come back out on the expressway near Berger. Standalone visions run from the Bible map. `?novision` turns the journey gate off.
+- **Worlds and bosses:**
+  - **Genesis, the Garden of Eden:** fruit trees with gold fruit, flowers, fountains, lion statues and a golden palace. Boss: **The Flood**, with waves that push you a lane, rain and rising water.
+  - **Exodus, the Red Sea:** a seabed path between water walls with fish, sharks, coral, sunken chariot wheels and light shafts. Boss: **Pharaoh's chariots**, which flash a lane warning and then charge. Jump them or change lane.
+  - **Leviticus, the Holy Road:** an aqueduct bridge over a canyon, with olives, mesas, a domed city and the tabernacle. Golden oil lamps and silver coins are the collectibles. Boss: **The Collapse**, with falling stones that cast shadows first.
+- **New pieces:** a golden shield bubble with a cross, angel wings (6 s glide with a magnet), a parchment scroll with a wax seal, and the obstacles from the concept art (lion statue, carved pillar, broken arch, fallen column, clay pots, coral, wreck).
+- **Questions and verses:** 19/18/18 KJV quiz questions and 7 verses per book (see **CONTENT-REVIEW.md**). Stars: ★ finish, ★★ 2 of 3 gates right, ★★★ all 3 right plus the whole verse.
+- **HUD:** shield badge with the light bar, a gold SCORE, COINS, and a rounded square pause button. The boss "gust" banner is now a slim strip at the top, not over the runner.
+- **Saves and shop:** progress saves in `lr3d_bible`. New dailies (finish a vision, answer book questions, use wings). New shop lantern: "Golden oil lamp" (750 light, Leviticus 24:2).
+
+**Tested (headless Chrome, 390×844 and 360×740)**
+- `tests/v10.js` passed with no JS errors. It covers the map, Genesis ★★★ on autopilot, wings, unlocks, the Exodus chariot warning, Leviticus lamps, the fallen-in-vision modal, and the journey gate → vision → back near Berger.
+- `tests/jfull.js`: the full journey on autopilot reached camp (km 46) through the Genesis vision, with no errors.
+- `tests/v10low.js`: battery tier visions run at 43–55 draw calls.
+- The swipe, regression, smoke and camp suites all passed.
+
+**Needs a person**
+- A pastor or teacher should read CONTENT-REVIEW.md before wider release.
+- Check on a real low-end phone that it runs smoothly. Headless fps doesn't show this.

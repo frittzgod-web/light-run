@@ -31,8 +31,8 @@
 
 <div id="hud" class="hidden">
   <div class="hrow">
-    <div class="pill lant"><span>🏮</span><div class="bar"><i id="hLant"></i><b id="hFloor"></b></div></div>
-    <div class="pill score" id="hScore">✨ 0</div>
+    <div class="pill lant"><span class="badge" aria-hidden="true"></span><div class="bar"><i id="hLant"></i><b id="hFloor"></b></div></div>
+    <div class="pill score"><span class="lbl">SCORE</span><b id="hScore">0</b><span class="coins"><i aria-hidden="true"></i><span class="lbl">COINS</span><em id="hCoins">0</em></span></div>
   </div>
   <div class="hrow2"><div class="pill info" id="hInfo">Next stop: Ojota</div><div class="pill combo hidden" id="hCombo"></div><div class="pill pow hidden" id="hPow"></div></div>
   <div id="hBoss" class="hidden"><span></span><em></em><i><b></b></i></div>
@@ -57,6 +57,7 @@
     <p id="challenge" class="small challenge hidden"></p>
     <button id="btnContinue" class="btn primary play hidden">▶ Continue</button>
     <button id="btnNew" class="btn primary play">▶ PLAY<small>Start your journey</small></button>
+    <button id="btnBible" class="btn bible">📖 BIBLE MAP<small>Enter the books of the Bible as visions</small></button>
     <div class="tiles">
       <button id="btnCreator" class="tile"><i>🧍🏾</i><span>Creator</span></button>
       <button id="btnShop" class="tile"><i>🛍️</i><span>Shop</span></button>
@@ -146,6 +147,7 @@
 <div id="tut" class="hidden" aria-live="polite"><div class="tutbox"><div class="tuthand" id="tutHand">👆</div><div class="tuttxt" id="tutTxt"></div><div class="tutdots" id="tutDots"></div><button id="tutSkip" class="btn slim ghost">Skip tutorial</button></div></div>
 <div id="rotate"><div><div class="rotic">📱</div><b>Turn your phone upright</b><p>Light Run plays best in portrait.</p></div></div>
 <section id="shop" class="screen bottom"><div class="card selcard shopcard" id="shopBody"></div></section>
+<section id="bible" class="screen dim"><div class="card scroll bmap" id="bibleBody"></div></section>
 <section id="modal" class="screen dim"><div class="card scroll" id="modalBody"></div></section>
 <section id="dialog" class="sheet"><div class="sheet-inner" id="dialogBody"></div></section>
 <section id="end" class="screen"><div class="card scroll" id="endBody"></div></section>
@@ -158,7 +160,7 @@
 <script>
   // Loading bar: stream the game files with progress (they land in the HTTP / offline cache), then start the module
   (function(){
-    var FILES = [['js/vendor/three.min.js', 750000], ['js/main.js', 175000], ['js/content.js', 70000], ['js/toon.js', 30000], ['js/chibi.js', 36000], ['js/props.js', 27000], ['js/meta.js', 11000], ['js/look.js', 6000]];
+    var FILES = [['js/vendor/three.min.js', 750000], ['js/main.js', 175000], ['js/content.js', 70000], ['js/toon.js', 30000], ['js/chibi.js', 36000], ['js/props.js', 27000], ['js/meta.js', 11000], ['js/look.js', 6000], ['js/books.js', 22000], ['js/worlds.js', 42000]];
     var total = 0, got = {}, fill = document.getElementById('ldFill'), txt = document.getElementById('ldTxt');
     FILES.forEach(function(f){ total += f[1]; got[f[0]] = 0; });
     window.__lrProgress = function(p, label){ p = Math.max(0, Math.min(1, p)); if (fill) fill.style.transform = 'scaleX(' + p.toFixed(3) + ')'; if (txt) txt.textContent = (label || 'Loading…') + ' ' + Math.round(p * 100) + '%'; };

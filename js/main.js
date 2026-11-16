@@ -6,6 +6,8 @@ import { THREE, toon, VC, outline, P, G, merge, mergedMesh, canvasTex, signTex, 
 import { danfo, truck, okada, cones, pothole, hawker, palmGeo, treeGeo, building, billboard, stall, streetLightGeo, bridge, setBridgeSign, gateArch, lanternMesh, textSprite, rampMesh, okadaRamp, railMesh, barMesh, lowSign, beamMesh, cow, herder, flyover, roadProp } from './props.js';
 import * as M from './meta.js';
 import * as C from './content.js';
+import * as BK from './books.js';
+import * as VW from './worlds.js';
 
 const $ = s => document.querySelector(s);
 const rand = (a, b) => a + Math.random() * (b - a);
@@ -17,6 +19,7 @@ const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;',
 const params = new URLSearchParams(location.search);
 const TIME_SCALE = clamp(+params.get('speed') || 1, 1, 8);
 const LITE = params.has('lite');
+const NOVIS = params.has('novision');   // v10 test switch: journey without the vision gate
 const AUTO = params.has('autopilot'), AUTO_MIX = params.get('autopilot') === 'mix', AUTO_FUN = AUTO;
 
 /* ---------------- WebGL check ---------------- */
@@ -218,7 +221,7 @@ function pickVerse(ch) {
 }
 function verseHUD(pop) {
   if (!S.plan || !R) return;
-  const v = S.plan.verse, got = R.vGot, el = $('#hVerse');
+  const v = R.vis ? R.vis.verse : S.plan.verse, got = R.vis ? R.vis.vGot : R.vGot, el = $('#hVerse');
   el.innerHTML = `<span class="vi">📜</span> ${v.parts.map((p, i) => i < got ? `<b>${esc(p)}</b>` : '<i>▢</i>').join(' ')} <span class="ref">${esc(v.ref)}</span>`;
   if (pop) { el.classList.remove('pop'); void el.offsetWidth; el.classList.add('pop'); }
 }
@@ -371,6 +374,10 @@ const roadGate = gateArch(14.5); roadGate.visible = false; RW.add(roadGate);
 const ORB_N = 150;
 const orbMesh = new THREE.InstancedMesh(new THREE.IcosahedronGeometry(0.42, 1), new THREE.MeshBasicMaterial({ color: 0xffe14a }), ORB_N); orbMesh.frustumCulled = false; RW.add(orbMesh);
 const orbs = Array.from({ length: ORB_N }, () => ({ on: false, x: 0, y: 1, z: 0 }));
+// v10: in the Leviticus vision the light orbs become golden oil lamps and silver coins
+const lampMesh = new THREE.InstancedMesh(VW.lampGeo(), new THREE.MeshBasicMaterial({ vertexColors: true }), ORB_N); lampMesh.frustumCulled = false; lampMesh.visible = false; RW.add(lampMesh);
+const coinMesh = new THREE.InstancedMesh(VW.coinGeo(), new THREE.MeshBasicMaterial({ vertexColors: true }), ORB_N); coinMesh.frustumCulled = false; coinMesh.visible = false; RW.add(coinMesh);
+const _zeroM = new THREE.Matrix4().makeScale(0, 0, 0);
 function hideOrbs() { const m = new THREE.Matrix4().makeScale(0, 0, 0); for (let i = 0; i < ORB_N; i++) orbMesh.setMatrixAt(i, m); orbMesh.instanceMatrix.needsUpdate = true; }
 hideOrbs();
 
@@ -402,14 +409,12 @@ const gateLanes = LANES.map((lx, i) => {
   return { g, curtain, lab: { cv, tex }, panel };
 });
 const gateDist = i => stopDist(i) - 14;
+const gateGD = g => (g.vi != null && R.vis ? R.vis.gates[g.vi] - R.vis.d : gateDist(g.idx) - R.dist);
 
 /* ---- verse scrolls ---- */
 const scrolls = [];
 for (let i = 0; i < 3; i++) {
-  const m = mergedMesh([
-    P(G.cyl, '#fff1cf', 0, 0, 0, 0, 0, Math.PI / 2, 0.55, 1.3, 0.55),
-    P(G.cyl, '#a0522d', -0.74, 0, 0, 0, 0, Math.PI / 2, 0.7, 0.18, 0.7), P(G.cyl, '#a0522d', 0.74, 0, 0, 0, 0, Math.PI / 2, 0.7, 0.18, 0.7),
-    P(G.box, '#d32f2f', 0, 0, 0, 0, 0, 0, 0.16, 0.6, 0.6)], 0.05, false);
+  const m = VW.scrollMesh();   // v10: cream parchment with a red wax seal
   m.visible = false; RW.add(m); scrolls.push({ obj: m, on: false, lane: 1 });
 }
 function hideScrolls() { scrolls.forEach(s => { s.on = false; s.obj.visible = false; }); }
@@ -419,14 +424,18 @@ const POWERS = {
   fire: { icon: '🔥', name: 'Holy Ghost Fire', ref: 'Acts 2:3', dur: 5, col: [1, 0.5, 0.15], line: 'cloven tongues like as of fire' },
   shield: { icon: '🛡️', name: 'Shield of Faith', ref: 'Ephesians 6:16', dur: 20, col: [0.4, 0.8, 1], line: 'quench all the fiery darts' },
   lamp: { icon: '🏮', name: 'Lamp unto my feet', ref: 'Psalm 119:105', dur: 8, col: [1, 0.85, 0.35], line: 'Thy word is a lamp unto my feet' },
+  wings: { icon: '👼', name: 'Angel wings', ref: 'Psalm 91:11', dur: 6, col: [1, 0.86, 0.94], line: 'He shall give his angels charge over thee' },   // v10
 };
 const powerUps = Object.keys(POWERS).map(k => {
-  const g = new THREE.Group(); const ic = textSprite(POWERS[k].icon, 1.5); ic.material.depthTest = true; ic.renderOrder = 0;
+  const g = new THREE.Group(); const ic = k === 'wings' ? VW.wingsMesh(1.25) : textSprite(POWERS[k].icon, 1.5); if (ic.material) { ic.material.depthTest = true; ic.renderOrder = 0; }
   const ring = new THREE.Mesh(new THREE.TorusGeometry(0.95, 0.09, 8, 28), new THREE.MeshBasicMaterial({ color: new THREE.Color(...POWERS[k].col), toneMapped: false }));
   const pg = new THREE.Sprite(new THREE.SpriteMaterial({ map: SOFT, color: new THREE.Color(...POWERS[k].col), transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, fog: false })); pg.scale.set(4, 4, 1);
   g.add(pg, ic, ring); g.visible = false; RW.add(g); return { k, g, ring, on: false, lane: 1 };
 });
-const shieldBubble = new THREE.Mesh(new THREE.SphereGeometry(1.45, 20, 14), new THREE.MeshBasicMaterial({ color: 0x66ccff, transparent: true, opacity: 0.18, depthWrite: false, blending: THREE.AdditiveBlending }));
+// v10: golden shield-of-faith bubble with an engraved cross
+const shieldBubble = new THREE.Mesh(new THREE.SphereGeometry(1.45, 24, 16), new THREE.MeshBasicMaterial({ color: 0xffe9a8, map: VW.SHIELD_TEX, transparent: true, opacity: 0.3, depthWrite: false, blending: THREE.AdditiveBlending }));
+{ const rim = new THREE.Mesh(new THREE.SphereGeometry(1.5, 20, 14), new THREE.MeshBasicMaterial({ color: 0xffc94a, transparent: true, opacity: 0.16, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.BackSide })); shieldBubble.add(rim); }
+const playerWings = VW.wingsMesh(0.95); playerWings.position.set(0, 1.42, -0.32); playerWings.visible = false;
 shieldBubble.visible = false; scene.add(shieldBubble);
 const FALL_VERSES = [
   ['For a just man falleth seven times, and riseth up again: but the wicked shall fall into mischief.', 'Proverbs 24:16'],
@@ -453,6 +462,7 @@ const OBS = {
   sign: { make: lowSign, rel: 1, slide: true, len: 0.4, over: 3.3 },
   beam: { make: beamMesh, rel: 1, slide: true, len: 0.8, over: 2.05, wide: true },
 };
+Object.assign(OBS, VW.VOBS);   // v10: vision-world obstacles (lion statues, pillars, logs, arches, fallen columns…)
 function withRamp(v, len, L, H) { const r = rampMesh(L, H); r.position.z = len / 2; v.add(r); return v; }
 const freeObs = {}, active = [];
 function spawnObs(type, lane, z, len) {
@@ -500,7 +510,8 @@ function moveProps(move) {
   flyovers.forEach((f, i) => { const z = -(FLY_D[i] - d0); f.position.z = z; f.visible = z > -330 && z < 40; });
 }
 function resetGround() { groundMat.color.setScalar(1); groundMat.emissive.setScalar(0); }
-function startRun() {
+function startRun(opt = {}) {
+  if (R && R.vis) leaveVisionWorld();
   try { localStorage.setItem('lr_runs', String((+localStorage.getItem('lr_runs') || 0) + 1)); } catch (e) {}
   fadeFlash();
   S.mode = 'run'; S.paused = false;
@@ -508,16 +519,19 @@ function startRun() {
   clearObs(); orbs.forEach(o => o.on = false); fx.clear(); resetGround();
   R = { combo: 0, comboT: 0, fire: 0, shield: false, shieldT: 0, magnet: 0, stumble: 0, lastStumble: -99, dark: 0, revived: false, nextPowerD: 380, popT: 0, dist: 0, t: 0, speed: START_SPEED, lane: 1, px: 0, pv: 0, camX: 0, py: 0, vy: 0, g: 50, onGround: true, coyote: 0, jbuf: 0, sbuf: 0, sl: 0, burst: 0, grind: false, grindM: 0, grindRun: 0, slides: 0, roofs: 0, inv: 0, shake: 0, nextRow: 40, stopIdx: 0, moralIdx: 0, dustT: 0, trailT: 0, ev: S.plan.event, gate: null, vGot: 0, nextScrollD: 120, autoT: 0, flash: 0, signFlash: null, zone: -1, boss: null, bossDone: {}, kmInt: 0, earn: 0, orbBuf: 0, dustK: 0, dustCol: '#c9a46a', traffic: 1, jamFree: 1, jamRows: 3, tightGap: false, startT: performance.now() };
   R.scrollGap = (RUN_LEN - 600) / (S.plan.verse.parts.length + 1.5);
+  // v10: a vision gate opens past Ojota once per chapter (journey runs only)
+  R.wings = 0; R.vis = null; R.visSkip = false; R.visTold = false; playerWings.visible = false; Object.values(portals).forEach(p => p.visible = false);
+  R.visBook = NOVIS || opt.vision || save.visCh === save.chapter ? null : journeyBook(); if (R.visBook) warmWorld(R.visBook);
   hideScrolls(); answerGate.visible = false; hideGateUI();
   R.cp0 = R.cp = snapCP(0, 0, 'Lagos (the start)');
   hudMode('run'); verseHUD(); powerHUD(); buildMap();
   const st = M.markPlayed(); if (st) setTimeout(() => toast(`🔥 Day ${st.n} streak! +${st.reward} 💡 light`, 2400), 3600);
-  if (needTutorial()) startTutorial(); else toast('Swipe ⬅️ ➡️ lanes · ⬆️ jump · ⬇️ slide · Run Lagos → KM 46!', 3400);
+  if (opt.vision) {} else if (needTutorial()) startTutorial(); else toast('Swipe ⬅️ ➡️ lanes · ⬆️ jump · ⬇️ slide · Run Lagos → KM 46!', 3400);
 }
 const START_SPEED = 22, MAX_SPEED = 72, JUMP_H = 2.4;   // v9: a touch quicker off the line (was 20)
 // v9 gentle start: early in chapter 1 (or a new player's first runs) big vehicle hits only stumble you
 const GENTLE_KM = 3;
-function isGentle() { return !!R && !R.boss && KM(R.dist) < GENTLE_KM && (save.chapter === 1 || (+localStorage.getItem('lr_runs') || 0) < 3); }
+function isGentle() { return !!R && !R.boss && !R.vis && KM(R.dist) < GENTLE_KM && (save.chapter === 1 || (+localStorage.getItem('lr_runs') || 0) < 3); }
 const airT = () => clamp(0.62 - (R.speed - 20) * 0.0022, 0.5, 0.62);
 const slideT = () => clamp(0.72 - (R.speed - 20) * 0.004, 0.5, 0.72);
 function runMove(d) { const n = clamp(R.lane + d, 0, 2); if (S.tut) tutAct(d < 0 ? 'left' : 'right'); if (n !== R.lane) { R.lane = n; R.moveT = R.t; sfx.tap(); buzz(8); if (R.grind) endGrind(); } }
@@ -742,23 +756,328 @@ function emitTrails(dt) {
   else if (t === 't_rainbow') { const cols = ['#ff1744', '#ff9100', '#ffea00', '#00e676', '#2979ff', '#d500f9']; cols.forEach((c, i) => fx.emit(R.px - 0.5 + i * 0.2, fy + 0.15, 0.4, 0, 0.05, 0, 0.6, 0.28, c, 0.2)); }
   else if (t === 't_wings') for (const s of [-1, 1]) fx.emit(R.px + s * 0.55, R.py + 1.35, 0.3, s * rand(0.5, 1.4), rand(0.2, 0.8), 0.6, 0.6, 0.36, '#ffffff', 0.8);
 }
+/* =========================================================
+   v10 · BIBLE VISIONS: a bus stop opens a vision gate into a world from a book of the Bible
+   ========================================================= */
+const BIBLE_KEY = 'lr3d_bible';
+function bible() { try { const b = JSON.parse(localStorage.getItem(BIBLE_KEY) || 'null'); if (b && b.books) return b; } catch (e) {} return { books: {} }; }
+function bibleSave(b) { try { localStorage.setItem(BIBLE_KEY, JSON.stringify(b)); } catch (e) {} }
+function bookRec(b, id) { return b.books[id] || (b.books[id] = { done: false, plays: 0, best: 0, stars: 0, q: {}, v: [] }); }
+function bookUnlocked(id, b = bible()) { if (!BK.PLAYABLE.includes(id)) return false; const pre = BK.UNLOCK_AFTER[id]; return !pre || !!(b.books[pre] && b.books[pre].done); }
+// the journey shows the first unfinished open book; once all three are done it rotates by chapter
+function journeyBook() { const b = bible(); return BK.PLAYABLE.find(id => bookUnlocked(id, b) && !(b.books[id] && b.books[id].done)) || BK.PLAYABLE[((save ? save.chapter : 1) - 1) % BK.PLAYABLE.length]; }
+const VIS_LEN = 2000, VIS_GATES = [430, 900, 1330], VIS_BOSS = [1420, 1930];
+const visPortalD = () => stopDist(0) + 70;   // the vision gate opens just past Ojota; you come back out before Berger
+const worlds = {}, portals = {};
+PRESETS.vis_exodus_b = { top: '#061a33', mid: '#1f5a78', bot: '#0b3040', fog: '#1d4f63', sun: '#b8d8ff', sunI: 1.1, hemiS: '#8fc0e0', hemiG: '#1c3a44', hemiI: 1.0, sunPos: [0.0, 0.8, -0.5] };
+function getWorld(id) {
+  if (!worlds[id]) { const W = VW.buildWorld(id, TIER); worlds[id] = W; scene.add(W.group); PRESETS['vis_' + id] = W.sky; }
+  return worlds[id];
+}
+function warmWorld(id) {   // build + compile shaders up front so the gate never hitches mid-run
+  const W = getWorld(id); if (W.warm) return W; W.warm = true;
+  try { W.group.visible = true; renderer.compile(scene, camera); } catch (e) {} W.group.visible = !!(R && R.vis && R.vis.id === id);
+  return W;
+}
+function getPortal(id) {
+  if (!portals[id]) { const WD = BK.WORLDS[id]; const p = VW.portalMesh(`📖 ${WD.name.toUpperCase()}`); p.visible = false; scene.add(p); portals[id] = p; }
+  return portals[id];
+}
+const visExit = VW.portalMesh('', 'rgba(170,235,255,.85)', 'rgba(80,160,255,.35)'); visExit.visible = false; scene.add(visExit);
+const laneWarn = new THREE.Mesh(new THREE.PlaneGeometry(2.7, 34), new THREE.MeshBasicMaterial({ color: 0xff5a2a, transparent: true, opacity: 0.4, depthWrite: false, blending: THREE.AdditiveBlending, fog: false }));
+laneWarn.rotation.x = -Math.PI / 2; laneWarn.position.set(0, 0.05, -6); laneWarn.visible = false; scene.add(laneWarn);
+const chariots = [];
+function chariotFree() { let c = chariots.find(c => !c.on); if (!c) { const obj = VW.chariotMesh(); obj.traverse(o => { if (o.isMesh && !o.userData.outline) o.castShadow = true; }); scene.add(obj); c = { obj, on: false }; chariots.push(c); } return c; }
+let visHidden = [];
+function hideRoadWorld(on) {
+  const keep = new Set([answerGate, orbMesh, lampMesh, coinMesh, ...scrolls.map(s => s.obj), ...powerUps.map(p => p.g)]);
+  if (on) { visHidden = []; for (const o of RW.children) { if (keep.has(o) || String(o.userData.tag || '').startsWith('obs-')) continue; if (o.visible) { visHidden.push(o); o.visible = false; } } lampGlow.visible = false; }
+  else { for (const o of visHidden) o.visible = true; visHidden = []; }
+}
+function visQuiz(id, rec) {
+  const Q = BK.WORLDS[id].quiz;
+  return ['e', 'm', 'h'].map(l => { const pool = Q.filter(q => q[4] === l), fresh = pool.filter(q => !rec.q[q[0]]); return pick(fresh.length ? fresh : pool); });
+}
+function pickBookVerse(id, rec) { const vs = BK.WORLDS[id].verses, fresh = vs.filter(v => !rec.v.includes(v.ref)); return fresh.length ? fresh[0] : pick(vs); }
+function visSpeed() { const V = R.vis; return Math.min(MAX_SPEED, V.s0 + (V.d / V.len) * 9 + (V.boss ? 2 : 0)); }
+function visGateZone(arrive) {
+  let z = 0; const V = R.vis, rd = readDist();
+  for (let i = V.gi; i < V.gates.length; i++) { const gd = V.gates[i]; if (arrive > gd - rd - 6 && arrive < gd + 8) z = Math.max(z, arrive > gd - 70 ? 2 : 1); }
+  return z;
+}
+function enterVision(id, journey) {
+  const W = warmWorld(id), WD = BK.WORLDS[id], b = bible(), rec = bookRec(b, id);
+  fadeFlash(); sfx.power(); buzz(30); shakeDOM();
+  if (R.boss) bossEnd(false);
+  clearObs(); orbs.forEach(o => o.on = false); hideScrolls(); powerUps.forEach(p => { p.on = false; p.g.visible = false; }); hideGateUI(); answerGate.visible = false;
+  Object.values(portals).forEach(p => p.visible = false);
+  hideRoadWorld(true); W.group.visible = true;
+  const verse = pickBookVerse(id, rec), bi = BK.PLAYABLE.indexOf(id);
+  R.vis = { id, W, WD, d: 0, len: VIS_LEN, journey, gi: 0, gates: VIS_GATES.slice(), quiz: visQuiz(id, rec), verse, vGot: 0, nextScrollD: 150, scrollGap: (VIS_GATES[2] - 150) / (verse.parts.length + 0.3),
+    right: 0, total: 0, boss: null, bossDone: false, bossK: 0, crashes: 0, score0: S.score, orbs0: S.orbs, nextPowerD: 220, wingsGiven: false, s0: Math.max(26, Math.min(40, R.speed)) + bi * 2 };
+  R.nextRow = 40; R.gate = null; R.inv = 1.2; R.zoneMsg = null;
+  orbMesh.visible = !W.lamps; lampMesh.visible = coinMesh.visible = W.lamps;
+  visExit.visible = false; visExit.userData.lab !== journey && (visExit.userData.lab = journey);
+  document.body.classList.add('invis', 'vis-' + id);
+  zoneCard(WD.name.toUpperCase(), WD.place, journey ? '✨ VISION GATE' : '📖 BIBLE VISION', 'vision');
+  setTimeout(() => { if (R && R.vis && R.vis.id === id && R.vis.d < 200) toast(WD.intro, 3400); }, 1300);
+  rec.plays++; bibleSave(b);
+  verseHUD(); powerHUD(); hudT = 0;
+}
+function leaveVisionWorld() { document.body.classList.remove('vfin');
+  const V = R && R.vis; if (!V) return;
+  if (V.boss) visBossEnd(false);
+  V.W.group.visible = false; hideRoadWorld(false); visExit.visible = false; laneWarn.visible = false; chariots.forEach(c => { c.on = false; c.obj.visible = false; });
+  orbMesh.visible = true; lampMesh.visible = coinMesh.visible = false;
+  document.body.classList.remove('invis', 'vis-' + V.id); $('#gust').classList.remove('show');
+  R.vis = null; R.gate = null; answerGate.visible = false; hideGateUI();
+  clearObs(); orbs.forEach(o => o.on = false); hideScrolls(); powerUps.forEach(p => { p.on = false; p.g.visible = false; });
+  verseHUD();
+}
+// journey: the golden vision gate across the expressway just past Ojota
+function journeyPortal() {
+  const id = R.visBook; if (!id || R.visSkip) return;
+  const P0 = getPortal(id), pd = visPortalD() - R.dist;
+  P0.visible = pd < 330 && pd > -3; P0.position.z = -pd; if (P0.visible) { P0.userData.disc.rotation.z = S.t * 0.8; P0.userData.disc.material.opacity = 0.36 + 0.1 * Math.sin(S.t * 4); }
+  if (!R.visTold && pd < readDist() + 40) { R.visTold = true; toast(`✨ A vision gate is opening: ${BK.WORLDS[id].name}! Run through it`, 2600); sfx.stop(); }
+  if (pd <= 0 && pd > -30) enterVision(id, true);   // (a debug jump far past the gate skips it)
+}
+function visionRow(light) {
+  const V = R.vis, O = V.boss ? V.W.bossObs : V.W.obs, lanes = freeLanes(), z = SPAWN_Z;
+  if (lanes.length < 3) return 6;
+  const trail = (l, n = 5, y = 1.0, z0 = z) => { for (let k = 0; k < n; k++) spawnOrb(LANES[l], y, z0 - k * 2.6); };
+  const r = Math.random();
+  if (light) { spawnObs(pick(O.jump), lanes[0], z); trail(lanes[1], 4); return 4; }
+  if (O.wide.length && r < 0.14) { spawnObs(pick(O.wide), 1, z); const l = pick([0, 1, 2]); for (let k = 0; k < 5; k++) { const t = (k - 2) * 0.09; spawnOrb(LANES[l], 1.0 + 2.2 - 40 * t * t, z + (k - 2) * 2.4); } return 5; }
+  if (r < 0.34) { spawnObs(pick(O.slide), lanes[0], z); for (let k = 0; k < 3; k++) spawnOrb(LANES[lanes[0]], 0.7, z - 1.5 - k * 2.2); if (Math.random() < 0.45) spawnObs(pick(O.slide), lanes[1], z); else spawnObs(pick(O.dodge), lanes[1], z - 1); trail(lanes[2], 4); return 4; }
+  if (r < 0.64) { spawnObs(pick(O.dodge), lanes[0], z); spawnObs(pick(O.jump), lanes[1], z - rand(0, 4)); trail(lanes[2], 6); return 6; }
+  spawnObs(Math.random() < 0.55 ? pick(O.dodge) : pick(O.jump), lanes[0], z); trail(lanes[1], 5);
+  if (Math.random() < 0.35) spawnObs(pick(O.jump), lanes[2], z - 10);
+  return 10;
+}
+function visGates(dt) {
+  const V = R.vis;
+  if (V.gi < V.gates.length) {
+    const gi = V.gi;
+    if (!R.gate || R.gate.vi !== gi) { R.gate = prepGate(100 + gi, V.quiz[gi]); R.gate.vi = gi; }
+    const g = R.gate, gd = V.gates[gi] - V.d, rd = readDist();
+    answerGate.visible = gd < rd + 60 && gd > -1.5; answerGate.position.z = -gd;
+    if (!g.shown && gd < rd) { g.shown = true; showGateQ(g); clearObs(a => a.obj.position.z < -40 && a.rel < 1); }
+    gateLanes.forEach((L, i) => { if (!g.done) L.curtain.material.opacity = 0.26 + 0.12 * Math.sin(S.t * 5 + i); else if (i === g.correctLane) L.curtain.material.opacity = 0.45 + 0.3 * Math.sin(S.t * 14); });
+    if (!g.done && gd <= 0) {
+      const ok = R.lane === g.correctLane; judgeGate(g); V.total++;
+      if (ok) { V.right++; dstat('bookq'); const b = bible(); bookRec(b, V.id).q[g.q[0]] = 1; bibleSave(b); }
+    }
+    if (g.shown && !g.done) placeGateLabels();
+    if (g.done && gd < -2) V.gi++;
+  } else answerGate.visible = false;
+  const ed = V.len - V.d; visExit.visible = ed < 330; visExit.position.z = -ed; if (visExit.visible) visExit.userData.disc.rotation.z = -S.t * 0.8;
+}
+function visSky(dt) {
+  const V = R.vis, bid = V.WD.boss.id, k = V.bossK;
+  const b = bid === 'flood' ? ['storm', 0.82] : bid === 'chariots' ? ['vis_exodus_b', 0.75] : ['dusk', 0.45];
+  setSky('vis_' + V.id, b[0], k * b[1], V.W.fogMul * (1 + k * 0.35));
+  lanternLight.intensity = (0.5 + k * 1.6) * S.lantern / 100;
+}
+function visBossStart() {
+  const V = R.vis, B = V.WD.boss; V.boss = { t: 2.4, warn: null, crashes: 0 };
+  clearTimeout($('#zoneCard')._t); $('#zoneCard').classList.remove('show');
+  const el = $('#bossCard'); el.className = 'boss vis ' + B.id; el.innerHTML = `<div class="bi">${B.icon}</div><b>${esc(B.title)}</b><span>${esc(B.sub)}</span>`; void el.offsetWidth; el.classList.add('show');
+  clearTimeout(el._t); el._t = setTimeout(() => el.classList.remove('show'), 2100);
+  sfx.boss(); shakeDOM(); document.body.classList.add('boss-v-' + B.id);
+  const hb = $('#hBoss'); hb.className = 'boss-' + B.id; hb.querySelector('span').textContent = B.icon; hb.querySelector('em').textContent = B.title; setW(hb.querySelector('b'), 0);
+}
+function visBossEnd(win) {
+  const V = R.vis, b = V && V.boss; if (!b) return; const B = V.WD.boss;
+  document.body.classList.remove('boss-v-' + B.id); $('#gust').classList.remove('show'); $('#hBoss').className = 'hidden'; laneWarn.visible = false;
+  V.boss = null; if (!win) return;
+  V.bossDone = true;
+  const pts = b.crashes ? 120 : 250; S.score += pts; addLantern(10); R.earn += Math.round(pts / 5); sfx.good(); scorePop(); dstat('vboss', 1, 'max');
+  const el = $('#bossCard'); el.className = 'boss win'; el.innerHTML = `<b>${esc(B.winTitle)} +${pts}</b><span>“${esc(B.win[0])}”</span><small>${esc(B.win[1])} (KJV)</small>`; void el.offsetWidth; el.classList.add('show');
+  clearTimeout(el._t); el._t = setTimeout(() => el.classList.remove('show'), 3400);
+  for (let k = 0; k < 40; k++) fx.emit(R.px + rand(-3, 3), rand(0.5, 4), rand(-4, 0), rand(-3, 3), rand(1, 5), rand(-2, 2), 1.0, 0.6, pick(['#fff3a0', '#ffd23f', '#ffffff']), 0.5);
+  if (B.id === 'flood') { const rb = textSprite('🌈', 26); rb.position.set(0, 16, -90); rb.material.opacity = 0.9; scene.add(rb); setTimeout(() => scene.remove(rb), 4200); }
+}
+// returns true when the boss ended the run this frame
+function visBoss(dt, move) {
+  const V = R.vis;
+  if (!V.boss && !V.bossDone && V.d >= VIS_BOSS[0]) visBossStart();
+  V.bossK += ((V.boss ? 1 : 0) - V.bossK) * Math.min(1, dt * 1.2);
+  for (const c of chariots) if (c.on) {
+    c.obj.position.z -= c.v * dt; c.obj.position.y = Math.abs(Math.sin(S.t * 14)) * 0.06;
+    if (Math.random() < 0.6) fx.emit(c.obj.position.x + rand(-1, 1), 0.3, c.obj.position.z + 1.5, rand(-1, 1), rand(0.5, 1.5), rand(1, 3), 0.7, 0.8, '#d6c6a0', 2.4);
+    if (!c.hit && Math.abs(c.obj.position.z) < 2.0 && Math.abs(c.obj.position.x - R.px) < 1.5) {
+      if (R.py > 2.0) { if (!c.nm) { c.nm = true; nearMiss('🦘 Leapt over a chariot!', 30, true); } }
+      else if (R.inv <= 0 || R.fire > 0) { c.hit = true; if (onHit({ type: 'chariot', big: true, obj: c.obj, lane: c.lane })) return true; }
+    }
+    if (!c.hit && !c.nm && c.obj.position.z < -2.5 && Math.abs(c.obj.position.x - R.px) < 4 && Math.abs(c.obj.position.x - R.px) > 1.5) { c.nm = true; nearMiss('🐎 Dodged the chariot!', 20, true); }
+    if (c.obj.position.z < -120) { c.on = false; c.obj.visible = false; }
+  }
+  const b = V.boss; if (!b) return false;
+  const B = V.WD.boss;
+  setW(el$('hBoss').querySelector('b'), clamp((V.d - VIS_BOSS[0]) / (VIS_BOSS[1] - VIS_BOSS[0]), 0, 1) * 100);
+  if (V.d >= VIS_BOSS[1]) { visBossEnd(true); return false; }
+  const g = $('#gust');
+  if (B.id === 'flood') {
+    for (let i = 0; i < 5; i++) fx.emit(R.px + rand(-14, 14), rand(7, 13), rand(-34, 4), rand(-3, -1), -30, 0, 0.45, 0.16, '#cfe8ff', 0);
+    if (!b.warn && (b.t -= dt) <= 0) { const dir = R.lane === 0 ? 1 : R.lane === 2 ? -1 : pick([-1, 1]); b.warn = { dir, t: 0.95 }; g.textContent = dir > 0 ? '🌊 A wave is coming ➡️' : '⬅️ A wave is coming 🌊'; g.classList.add('show'); }
+    if (b.warn && (b.warn.t -= dt) <= 0) { const before = R.lane; if (R.py < 1.2 && !(R.wings > 0)) runMove(b.warn.dir); if (R.lane !== before) { shakeDOM(); sfx.whoosh(); popText('🌊 Carried by the wave!', 'dim'); } else popText('🌊 Rode the wave!', ''); for (let k = 0; k < 20; k++) fx.emit(R.px - b.warn.dir * 4 + rand(-1, 1), rand(0.2, 1.2), rand(-3, 1), b.warn.dir * rand(3, 6), rand(1, 3), 0, 0.7, 0.6, '#e0f6ff', 1.2); b.warn = null; b.t = rand(3.2, 4.8); g.classList.remove('show'); }
+  } else if (B.id === 'chariots') {
+    if (!b.warn && (b.t -= dt) <= 0) { const lane = Math.random() < 0.6 ? R.lane : pick([0, 1, 2]); b.warn = { lane, t: 1.3 }; laneWarn.visible = true; laneWarn.position.x = LANES[lane]; g.textContent = `🐎 Chariot behind you! Leave the ${['left', 'middle', 'right'][lane]} lane!`; g.classList.add('show'); sfx.whoosh(); buzz(12); }
+    if (b.warn) {
+      laneWarn.material.opacity = 0.28 + 0.22 * Math.sin(S.t * 22);
+      if ((b.warn.t -= dt) <= 0) { const c = chariotFree(); c.on = true; c.hit = false; c.nm = false; c.lane = b.warn.lane; c.v = 34; c.obj.visible = true; c.obj.position.set(LANES[c.lane], 0, 15); sfx.thunder(); shakeDOM(); b.warn = null; b.t = rand(1.5, 2.5); laneWarn.visible = false; g.classList.remove('show'); }
+    }
+  } else if (B.id === 'collapse') {
+    R.shake = Math.max(R.shake, 0.08);
+    if ((b.t -= dt) <= 0) {
+      b.t = rand(1.2, 1.9); const l = Math.random() < 0.55 ? R.lane : pick([0, 1, 2]);
+      if (!busyLane(l)) { const a = spawnObs('vDrop', l, -Math.max(36, R.speed * 1.45)); a.fallY = 17; a.obj.position.y = 17; a.blob = a.obj.children.find(c => c.material === blobMat); if (a.blob) a.blob.position.y = 0.03 - 17; }
+      if (!b.told) { b.told = true; g.textContent = '⚠️ Watch the shadows: stones are falling!'; g.classList.add('show'); setTimeout(() => g.classList.remove('show'), 2200); }
+    }
+  }
+  return false;
+}
+function finishVision() {
+  const V = R.vis, b = bible(), rec = bookRec(b, V.id), WD = V.WD;
+  const verseDone = V.vGot >= V.verse.parts.length, stars = BK.starsFor(V.right, V.gates.length, verseDone);
+  const bonus = 150 + stars * 50; S.score += bonus; R.earn += 30 + stars * 15; addLantern(8);
+  const pts = S.score - V.score0, first = !rec.done;
+  rec.done = true; rec.stars = Math.max(rec.stars || 0, stars); rec.best = Math.max(rec.best || 0, pts);
+  if (verseDone && !rec.v.includes(V.verse.ref)) {
+    rec.v.push(V.verse.ref);
+    const full = V.verse.text, list = myVerses().filter(x => x.ref !== V.verse.ref); list.unshift({ ref: V.verse.ref, text: full, ch: save.chapter, book: WD.name, at: new Date().toISOString().slice(0, 10) }); localStorage.setItem(VERSES_KEY, JSON.stringify(list));
+  }
+  bibleSave(b); dstat('vision', 1);
+  const nextId = BK.PLAYABLE.find(id => BK.UNLOCK_AFTER[id] === V.id), unlocked = first && nextId ? BK.WORLDS[nextId].name : null;
+  const res = { id: V.id, stars, pts, right: V.right, total: V.total, verseDone, verse: V.verse, unlocked, journey: V.journey, orbs: S.orbs - V.orbs0 };
+  R.lastVision = res;
+  for (let k = 0; k < 40; k++) fx.emit(R.px + rand(-3, 3), rand(0.5, 4), rand(-4, 0), rand(-3, 3), rand(1, 5), rand(-2, 2), 1.0, 0.6, pick(['#fff3a0', '#ffd23f', '#ffffff']), 0.5);
+  if (V.journey) {
+    leaveVisionWorld(); fadeFlash(); sfx.good();
+    R.dist = Math.max(R.dist, stopDist(1) - readDist() - 90); R.stopIdx = 1; R.zone = -1; R.kmInt = Math.floor(KM(R.dist)); R.inv = 1.5; R.nextRow = 30; R.nextScrollD = R.dist + 80; R.nextPowerD = R.dist + 300;
+    R.cp = snapCP(R.dist, 1, 'Berger'); R.visBook = null; save.visCh = save.chapter; persist();
+    toast(`🌈 Vision complete! ${WD.name} ${'★'.repeat(stars)}${'☆'.repeat(3 - stars)} +${bonus}${unlocked ? ` · ${unlocked} unlocked on the Bible map` : ''} · back on the expressway near Berger`, 3600);
+  } else {
+    settleRunner(); S.paused = true; bankRun(false); V.finished = true; document.body.classList.add('vfin'); hideGateUI(); clearTimeout($('#bossCard')._t); $('#bossCard').classList.remove('show'); $('#gust').classList.remove('show'); showVisionResult(res);   // the vision world stays behind the results card
+  }
+}
+function starsHTML(n, max = 3) { return `<span class="stars">${'★'.repeat(n)}<i>${'★'.repeat(max - n)}</i></span>`; }
+function showVisionResult(r) {
+  const WD = BK.WORLDS[r.id], m = $('#modalBody');
+  m.innerHTML = `<div class="banner vis vis-${r.id}"><div class="km">📖 ${esc(WD.name.toUpperCase())} · VISION COMPLETE</div><div class="name">${esc(WD.place)}</div></div>
+    <div class="vstars">${starsHTML(r.stars)}</div>
+    <div class="chips"><span class="chip">✨ ${r.pts} light</span><span class="chip">📖 ${r.right}/${r.total} questions</span><span class="chip">🪙 ${r.orbs} collected</span></div>
+    ${r.verseDone ? `<div class="vmem"><div class="vt">📜 VERSE SAVED TO MY VERSES</div><div class="vx">“${esc(r.verse.text)}”</div><b>${esc(r.verse.ref)} (KJV)</b></div>` : `<p class="small">📜 Collect every scroll to save <b>${esc(r.verse.ref)}</b> to My Verses.</p>`}
+    ${r.unlocked ? `<p class="unl">🔓 <b>${esc(r.unlocked)}</b> is now open on the Bible map!</p>` : ''}
+    <p class="small">★ finish · ★★ two questions right · ★★★ all three right and the whole verse</p>
+    <button class="btn primary" id="vrAgain">🔁 Play ${esc(WD.name)} again</button>
+    <button class="btn" id="vrMap">📖 Bible map</button>
+    <button class="btn ghost" id="vrHome">🏠 Main menu</button>`;
+  show('modal'); m.scrollTop = 0;
+  $('#vrAgain').onclick = () => { sfx.tap(); hide('modal'); startVisionRun(r.id); };
+  $('#vrMap').onclick = () => { sfx.tap(); hide('modal'); enterTitle(); openBibleMap(); };
+  $('#vrHome').onclick = () => { sfx.tap(); hide('modal'); enterTitle(); };
+}
+function startVisionRun(id) {
+  ensureAudio(); hide('bible'); hide('title'); hide('modal');
+  if (!save) { save = freshSave(); persist(); }
+  buildPlayer();
+  S.plan = { event: C.EVENTS[0], enc: [], quiz: C.GATE_Q.slice(0, 9), road: [], door: null, quest: null, verse: pickVerse(save.chapter), story: null };
+  Object.assign(S, { score: 0, orbs: 0, hits: 0, quizRight: 0, quizTotal: 0, helpedRun: 0, virtues: {}, log: [], vGot: 0, verseDone: false });
+  S.floor = 15; S.lantern = 60;
+  setMoralNPC(null); startRun({ vision: id }); enterVision(id, false);
+}
+function restartVision() {
+  const V = R.vis; if (!V) return; const id = V.id, j = V.journey;
+  if (j) { restartFrom(R.cp); return; }   // the journey checkpoint is Ojota, right before the vision gate
+  restartFrom(R.cp0); enterVision(id, false);
+}
+function leaveVisionEarly() {   // journey only: skip the vision and carry on along the expressway
+  hide('modal'); leaveVisionWorld(); R.visSkip = true; R.dist = visPortalD() + 5; settleRunner(); R.inv = 2; R.nextRow = 30; S.paused = false; R.zone = -1;
+  toast('🛣️ Back on the expressway. The vision gate will open again next chapter.', 2400);
+}
+function showFallenVision(cause) {
+  const V = R.vis, v = pick(FALL_VERSES), m = $('#modalBody'), cost = 200;
+  $('#toast').classList.remove('show');
+  m.innerHTML = `<div class="banner dark"><div class="km">${esc(cause)}</div><div class="name">FALLEN IN THE VISION</div></div>
+    ${verseHTML(v)}
+    <div class="reach"><div class="rk">${esc(V.WD.name)}: <b>${Math.round(V.d / V.len * 100)}%</b> of the vision</div><div class="rbar"><i style="width:${(V.d / V.len * 100).toFixed(1)}%"></i></div></div>
+    <div class="chips"><span class="chip">✨ ${S.score} light</span><span class="chip">📖 ${V.right}/${V.total} questions</span><span class="chip">📜 ${V.vGot}/${V.verse.parts.length} scrolls</span></div>
+    ${!R.revived ? `<p class="small" style="margin:4px 0">You can <b>rise again</b> once:</p>
+      <button class="btn green" id="riseQ">🙏 Rise again · answer a ${esc(V.WD.name)} question</button>
+      <button class="btn primary" id="riseL" ${S.score < cost ? 'disabled' : ''}>✨ Rise again · spend ${cost} light${S.score < cost ? ' (not enough yet)' : ''}</button>` : '<p class="small">You have already risen once this run.</p>'}
+    <button class="btn" id="rVis">🔁 Restart the vision</button>
+    ${V.journey ? '<button class="btn ghost" id="rSkip">🛣️ Leave the vision · back to the expressway</button>' : '<button class="btn ghost" id="rMap">📖 Back to the Bible map</button>'}`;
+  show('modal'); m.scrollTop = 0;
+  if (!R.revived) {
+    $('#riseQ').onclick = () => { sfx.tap(); riseQuestion(); };
+    $('#riseL').onclick = () => { if (S.score < cost) return; S.score -= cost; sfx.good(); revive('✨ You spent 200 light and rose again!'); };
+  }
+  $('#rVis').onclick = () => { sfx.tap(); hide('modal'); R.revived = false; restartVision(); };
+  if ($('#rSkip')) $('#rSkip').onclick = () => { sfx.tap(); leaveVisionEarly(); };
+  if ($('#rMap')) $('#rMap').onclick = () => { sfx.tap(); hide('modal'); leaveVisionWorld(); enterTitle(); openBibleMap(); };
+}
+/* ---- the Bible map screen ---- */
+function bibleTotals(b = bible()) { let stars = 0, done = 0; for (const id of BK.PLAYABLE) { const r = b.books[id]; if (r) { stars += r.stars || 0; if (r.done) done++; } } return { stars, done }; }
+function openBibleMap() {
+  ensureAudio(); const b = bible(), t = bibleTotals(b), el = $('#bibleBody');
+  const tile = bk => {
+    const play = BK.PLAYABLE.includes(bk.id), open = play && bookUnlocked(bk.id, b), r = b.books[bk.id];
+    const cls = !play ? 'soon' : open ? 'play' + (r && r.done ? ' done' : '') : 'lock';
+    const sub = !play ? 'Soon' : !open ? '🔒' : r && r.done ? starsHTML(r.stars) : 'Play ▶';
+    return `<button class="btile ${cls}" data-id="${bk.id}" aria-label="${esc(bk.name)}"><i>${bk.icon}</i><b>${esc(bk.name)}</b><em>${sub}</em></button>`;
+  };
+  el.innerHTML = `<div class="bmhead"><h2>📖 The Bible Map</h2><button class="iconbtn bmx" id="bmClose" aria-label="Close">✕</button></div>
+    <p class="small">66 books · enter a book through its <b>vision gate</b> · <b>${t.done}/${BK.PLAYABLE.length}</b> visions done · <b>${t.stars}/${BK.PLAYABLE.length * 3}</b> ★</p>
+    <div class="bprog"><i style="width:${(t.done / 66 * 100).toFixed(1)}%"></i><span>${t.done}/66 books</span></div>
+    ${BK.SECTIONS.map(([sid, name, icon]) => { const list = BK.BOOKS.filter(x => x.sec === sid); return `<h3 class="bsec">${icon} ${esc(name)} <small>${list.length}</small></h3><div class="bgrid">${list.map(tile).join('')}</div>`; }).join('')}
+    <p class="small">Wave 1: Genesis, Exodus and Leviticus are open. More books arrive in later waves. Questions and verses are KJV.</p>
+    <button class="btn ghost" id="bmClose2">Close</button>`;
+  show('bible'); el.scrollTop = 0;
+  const close = () => { sfx.tap(); hide('bible'); };
+  $('#bmClose').onclick = close; $('#bmClose2').onclick = close;
+  el.querySelectorAll('.btile').forEach(x => x.onclick = () => {
+    sfx.tap(); const id = x.dataset.id, bk = BK.bookById(id);
+    if (!BK.PLAYABLE.includes(id)) { toast(`📖 ${bk.name}: this vision arrives in a later wave`, 1800); return; }
+    if (!bookUnlocked(id, b)) { toast(`🔒 Finish ${BK.WORLDS[BK.UNLOCK_AFTER[id]].name} to open ${bk.name}`, 2000); return; }
+    openBookCard(id);
+  });
+}
+function openBookCard(id) {
+  const WD = BK.WORLDS[id], b = bible(), r = bookRec(b, id), el = $('#bibleBody'), qRight = WD.quiz.filter(q => r.q[q[0]]).length;
+  el.innerHTML = `<div class="banner vis vis-${id}"><div class="km">${WD.icon} ${esc(WD.name.toUpperCase())} · VISION ${BK.PLAYABLE.indexOf(id) + 1}</div><div class="name">${esc(WD.place)}</div></div>
+    <p class="btag">${esc(WD.tag)}</p>
+    <div class="vstars">${starsHTML(r.stars || 0)}</div>
+    <div class="chips"><span class="chip">🏆 Best ${r.best || 0}</span><span class="chip">📜 Verses ${r.v.length}/${WD.verses.length}</span><span class="chip">📖 Questions ${qRight}/${WD.quiz.length}</span><span class="chip">▶ Played ${r.plays || 0}</span></div>
+    <div class="bboss"><span>${WD.boss.icon}</span><div><b>${esc(WD.boss.title)}</b><small>${esc(WD.boss.sub)}</small></div></div>
+    <h3>📜 Verses from ${esc(WD.name)}</h3>
+    ${WD.verses.map(v => r.v.includes(v.ref) ? `<div class="verse">“${esc(v.text)}”<b>${esc(v.ref)} (KJV)</b></div>` : `<div class="verse locked">🔒 ${esc(v.ref)} · collect its scrolls in the vision</div>`).join('')}
+    <button class="btn primary" id="bkGo">▶ Enter the vision</button>
+    <button class="btn ghost" id="bkBack">← Bible map</button>`;
+  el.scrollTop = 0;
+  $('#bkGo').onclick = () => { sfx.good(); startVisionRun(id); };
+  $('#bkBack').onclick = () => { sfx.tap(); openBibleMap(); };
+}
 function updateRun(dt) {
-  const ch = save.chapter, ev = R.ev;
+  const ch = save.chapter, ev = R.ev, V = R.vis;
   R.t += dt;
   if (R.stumble > 0) R.stumble -= dt;
   if (R.burst > 0) R.burst -= dt;
-  R.speed = Math.min(92, runSpeed() * (R.stumble > 0 ? 1 - 0.5 * (R.stumble / 0.9) : 1) * Math.min(1.38, (R.fire > 0 ? 1.3 : 1) * (R.burst > 0 ? 1.25 : 1)));
+  R.speed = Math.min(92, (V ? visSpeed() : runSpeed()) * (R.stumble > 0 ? 1 - 0.5 * (R.stumble / 0.9) : 1) * Math.min(1.38, (R.fire > 0 ? 1.3 : 1) * (R.burst > 0 ? 1.25 : 1)));
   if (AUTO) autoSteer(dt);
   updatePowers(dt);
-  const move = R.speed * dt; R.dist += move;
+  const move = R.speed * dt; if (V) V.d += move; else R.dist += move;
   const km = KM(R.dist);
-  moveProps(move);
-  updateZoneFX(dt, km); updateBoss(dt);
-  for (const v of oncoming) { v.position.z += move + 18 * dt; if (v.position.z > 30) { v.position.z = -300 - rand(0, 60); v.position.x = Math.random() < 0.5 ? -10.6 : -15.2; } v.visible = v.position.z > -(scene.fog.far + 8); }
+  if (V) { V.W.move(move, dt, S.t, fx, V.bossK); if (visBoss(dt, move)) return; }
+  else { moveProps(move); updateZoneFX(dt, km); updateBoss(dt); }
+  if (!V) for (const v of oncoming) { v.position.z += move + 18 * dt; if (v.position.z > 30) { v.position.z = -300 - rand(0, 60); v.position.x = Math.random() < 0.5 ? -10.6 : -15.2; } v.visible = v.position.z > -(scene.fog.far + 8); }
   // critically damped spring toward the target lane: smooth, frame-rate independent, no snapping
   { const w = 30, T = LANES[R.lane]; R.pv = (R.pv || 0) + (w * w * (T - R.px) - 2 * w * (R.pv || 0)) * dt; R.px += R.pv * dt; if (Math.abs(T - R.px) < 0.002 && Math.abs(R.pv) < 0.02) { R.px = T; R.pv = 0; } }
   // vertical: jumps, ramps, roofs, rails
   const [gy, surfA] = groundAt(R.px);
+  if (R.wings > 0) { R.py += (3.6 - R.py) * Math.min(1, dt * 5); R.vy = 0; R.onGround = false; R.coyote = 0; R.sl = 0; }   // v10: angel wings: glide above everything
+  else {
   if (R.onGround) {
     if (gy <= R.py + 1.25 && gy >= R.py - 0.08) R.py = gy;
     else if (gy < R.py - 0.08) {
@@ -774,6 +1093,7 @@ function updateRun(dt) {
       if (gy < 0.3) for (let i = 0; i < 8; i++) fx.emit(R.px + rand(-0.3, 0.3), gy + 0.15, rand(-0.2, 0.4), rand(-2, 2), rand(0.3, 1), rand(-1, 1), 0.6, 0.7, '#e2c39a', 2);
       if (R.jbuf > 0) runJump(); else if (R.sbuf > 0) { R.sbuf = 0; R.sl = slideT(); sfx.whoosh(); }
     } else if (R.py < 0) { R.py = 0; R.vy = 0; R.onGround = true; }
+  }
   }
   R.surfA = R.onGround ? surfA : null;
   if (R.jbuf > 0) R.jbuf -= dt; if (R.sbuf > 0) R.sbuf -= dt; if (R.sl > 0) R.sl -= dt;
@@ -796,11 +1116,17 @@ function updateRun(dt) {
   if (R.stumble > 0.4) player.root.rotation.x = Math.sin((0.9 - R.stumble) * 9) * 0.35; else player.root.rotation.x = 0;
   R.dustT -= dt; if (R.dustT <= 0 && R.onGround && !R.grind && R.py < 0.3) { R.dustT = 0.05; fx.emit(R.px + rand(-0.2, 0.2), R.py + 0.12, 0.35, rand(-0.6, 0.6), rand(0.4, 1.0), rand(0.5, 1.5), 0.55, 0.45, '#e6c9a0', 2.2); }
   emitTrails(dt);
-  if (ev.mod.rain) for (let i = 0; i < 3; i++) fx.emit(R.px + rand(-14, 14), rand(8, 14), rand(-30, 4), 0, -26, 0, 0.5, 0.18, '#cfe8ff', 0);
-  const nextStop = stopDist(R.stopIdx), moral = S.plan.road[R.moralIdx];
+  if (ev.mod.rain && !V) for (let i = 0; i < 3; i++) fx.emit(R.px + rand(-14, 14), rand(8, 14), rand(-30, 4), 0, -26, 0, 0.5, 0.18, '#cfe8ff', 0);
+  const nextStop = stopDist(R.stopIdx), moral = V ? null : S.plan.road[R.moralIdx];
   const moralD = moral ? moralDist(R.moralIdx) : Infinity;
   R.nextRow -= move;
-  if (R.nextRow <= 0) {
+  if (V && R.nextRow <= 0) {
+    const arrive = V.d - SPAWN_Z, gz = visGateZone(arrive), quiet = gz === 2 || arrive > V.len - 50 || V.d < 30;
+    let depth = 0;
+    if (!quiet) depth = visionRow(gz === 1);
+    else if (arrive < V.len - 50 && Math.random() < 0.5) { const l = Math.floor(Math.random() * 3); for (let k = 0; k < 4; k++) spawnOrb(LANES[l], 1.0, SPAWN_Z - k * 2.6); }
+    R.nextRow = depth + Math.max(16, R.speed * (V.boss ? 0.72 : 0.9)) + rand(0, 6);
+  } else if (R.nextRow <= 0) {
     const arrive = R.dist - SPAWN_Z, gz = gateZone(arrive);
     const quiet = gz === 2 || (arrive > moralD - 45 && arrive < moralD + 8) || arrive > RUN_LEN - 40;
     let depth = 0;
@@ -819,9 +1145,10 @@ function updateRun(dt) {
     else if (a.type === 'hawker') poseHuman(a.obj.userData.human, 'carry', dt, 0.6);
     if (a.drop && a.obj.position.z > -60) { const b = a.obj.userData.bar; if (b.position.y > 1.55) { a.dropV += 30 * dt; b.position.y = Math.max(1.55, b.position.y - a.dropV * dt); if (b.position.y === 1.55) { a.drop = false; if (Math.abs(a.obj.position.z) < 60) { sfx.hit(); for (let k = 0; k < 8; k++) fx.emit(a.obj.position.x + rand(-1, 1), 1.5, a.obj.position.z, rand(-2, 2), rand(1, 3), 0, 0.5, 0.5, '#cfd8dc', 1); } } } }
     if (a.obj.userData.exhaust && (a.ex -= dt) <= 0) { a.ex = 0.07; const e = a.obj.userData.exhaust; fx.emit(a.obj.position.x + e[0], e[1], a.obj.position.z + e[2], rand(-0.3, 0.3), rand(0.6, 1.2), 1.5, 0.9, 0.55, '#8d8d8d', 2.5); }
+    if (a.fallY > 0) { a.fallY = Math.max(0, a.fallY - 26 * dt); a.obj.position.y = a.fallY; if (a.blob) a.blob.position.y = 0.03 - a.fallY; if (!a.fallY) { R.shake = Math.max(R.shake, 0.3); sfx.hit(); for (let k = 0; k < 14; k++) fx.emit(a.obj.position.x + rand(-1, 1), 0.3, a.obj.position.z + rand(-1, 1), rand(-3, 3), rand(0.5, 2.5), rand(-2, 2), 0.9, 0.9, '#d8b585', 2.4); } }
     if (a.fly) { a.obj.position.y += a.fly * dt; a.fly -= 22 * dt; a.obj.rotation.x += dt * 7; a.obj.position.x += a.fx * dt; if (a.obj.position.y < -3) a.obj.position.z = 99; }
     const z = a.obj.position.z, dx = a.wide ? 0 : Math.abs(a.obj.position.x - px);
-    if (!a.hit && Math.abs(z) < a.len / 2 + 0.45 && dx < 1.4) {
+    if (!a.hit && !(a.fallY > 1.2) && Math.abs(z) < a.len / 2 + 0.45 && dx < 1.4) {
       let blocked;
       if (a.slide) blocked = !(R.sl > 0) && R.py < a.over && !(a.drop && a.obj.userData.bar.position.y > 3.5);
       else if (a.surf) blocked = R.py < a.surf - 0.9;
@@ -836,7 +1163,7 @@ function updateRun(dt) {
     }
     if (z > 22 + a.len / 2) { RW.remove(a.obj); freeObs[a.key].push(a.obj); active.splice(i, 1); }
   }
-  let hi = 0;
+  let hi = 0; const lampMode = !!(V && V.W.lamps);
   orbs.forEach((o, i) => {
     if (o.on) {
       o.z += move;
@@ -849,34 +1176,36 @@ function updateRun(dt) {
       if (o.z > 15) o.on = false;
     }
     const s = o.on ? 1 + Math.sin(S.t * 6 + i) * 0.1 : 0;
-    _q.setFromAxisAngle(_up, S.t * 2 + i); _mtx.compose(_pv.set(o.x, o.y + Math.sin(S.t * 4 + i) * 0.12, o.z), _q, _sv.setScalar(s)); orbMesh.setMatrixAt(i, _mtx);
+    _q.setFromAxisAngle(_up, S.t * 2 + i); _mtx.compose(_pv.set(o.x, o.y + Math.sin(S.t * 4 + i) * 0.12, o.z), _q, _sv.setScalar(s));
+    if (lampMode) { const coin = i % 3 === 0; lampMesh.setMatrixAt(i, coin ? _zeroM : _mtx); coinMesh.setMatrixAt(i, coin ? _mtx : _zeroM); } else orbMesh.setMatrixAt(i, _mtx);
     if (o.on && hi < halos.n - 1 && o.z > -90) { halos.pos.set([o.x, o.y, o.z], hi * 3); halos.col.set([1, 0.82, 0.3], hi * 3); halos.size[hi] = 2.8; halos.alpha[hi] = 0.85; hi++; }
   });
-  orbMesh.instanceMatrix.needsUpdate = true;
-  // verse scrolls
-  const vp = S.plan.verse.parts;
-  if (R.vGot < vp.length && R.dist >= R.nextScrollD && !inGateZone(R.dist - SPAWN_Z) && !R.boss && R.dist - SPAWN_Z < RUN_LEN - 60) {
+  if (lampMode) lampMesh.instanceMatrix.needsUpdate = coinMesh.instanceMatrix.needsUpdate = true; else orbMesh.instanceMatrix.needsUpdate = true;
+  // verse scrolls (v10: a vision collects a verse from its own book)
+  const VS = V || R, vdist = V ? V.d : R.dist, vp = V ? V.verse.parts : S.plan.verse.parts;
+  if (VS.vGot < vp.length && vdist >= VS.nextScrollD && !(V ? visGateZone(vdist - SPAWN_Z) || V.boss || vdist - SPAWN_Z > V.len - 80 : inGateZone(R.dist - SPAWN_Z) || R.boss || R.dist - SPAWN_Z >= RUN_LEN - 60)) {
     const sc = scrolls.find(s => !s.on);
     const lanes = shuffle([0, 1, 2]).filter(l => !active.some(a => (a.wide || a.lane === l) && Math.abs(a.obj.position.z - SPAWN_Z) < 14 + a.len / 2));
-    if (sc && lanes.length) { sc.on = true; sc.lane = lanes[0]; sc.obj.visible = true; sc.obj.position.set(LANES[sc.lane], 1.3, SPAWN_Z); R.nextScrollD = R.dist + R.scrollGap; }
-    else R.nextScrollD = R.dist + 8;
+    if (sc && lanes.length) { sc.on = true; sc.lane = lanes[0]; sc.obj.visible = true; sc.obj.position.set(LANES[sc.lane], 1.3, SPAWN_Z); VS.nextScrollD = vdist + VS.scrollGap; }
+    else VS.nextScrollD = vdist + 8;
   }
   for (const sc of scrolls) {
     if (!sc.on) continue;
     sc.obj.position.z += move; if (R.magnet > 0 && sc.obj.position.z > -24) sc.obj.position.x += (px - sc.obj.position.x) * Math.min(1, dt * 6); sc.obj.rotation.y = Math.sin(S.t * 2) * 0.5; sc.obj.position.y = 1.3 + Math.sin(S.t * 4) * 0.15;
     if (hi < halos.n - 1) { halos.pos.set([sc.obj.position.x, sc.obj.position.y, sc.obj.position.z], hi * 3); halos.col.set([1, 0.95, 0.6], hi * 3); halos.size[hi] = 3.4; halos.alpha[hi] = 0.9; hi++; }
     if (Math.abs(sc.obj.position.z) < 1.2 + move && Math.abs(sc.obj.position.x - px) < 1.4 && Math.abs(R.py + 0.9 - sc.obj.position.y) < 1.8) {
-      sc.on = false; sc.obj.visible = false; R.vGot++; S.score += 25; addLantern(2); sfx.orb(); setTimeout(() => sfx.orb(), 90); dstat('scrolls');
+      sc.on = false; sc.obj.visible = false; VS.vGot++; S.score += 25; addLantern(2); sfx.orb(); setTimeout(() => sfx.orb(), 90); dstat('scrolls');
       for (let k = 0; k < 16; k++) fx.emit(sc.obj.position.x, 1.3, 0, rand(-2.5, 2.5), rand(0, 3.5), rand(-1, 1), 0.7, 0.45, '#fff1a8', 0.5);
       verseHUD(true);
-      if (R.vGot >= vp.length) { sfx.good(); toast(`📜 Verse complete! ${S.plan.verse.ref} · bonus light at the camp gate`, 2600); }
+      if (VS.vGot >= vp.length) { sfx.good(); toast(V ? `📜 Verse complete! ${V.verse.ref} · saved to your Bible map` : `📜 Verse complete! ${S.plan.verse.ref} · bonus light at the camp gate`, 2600); }
     }
     if (sc.obj.position.z > 15) { sc.on = false; sc.obj.visible = false; }
   }
   lanternHalo(hi);
   // answer gates
   const NG = C.STOPS.length - 1;
-  if (R.stopIdx < NG) {
+  if (V) visGates(dt);
+  else if (R.stopIdx < NG) {
     const gi = R.stopIdx;
     if (!R.gate || R.gate.idx !== gi) R.gate = prepGate(gi);
     const g = R.gate, gd = gateDist(gi) - R.dist, rd = readDist();
@@ -890,26 +1219,30 @@ function updateRun(dt) {
   if (R.signFlash) { R.signFlash.t -= dt; const k = Math.max(0, R.signFlash.t) / 1.2, on = Math.floor(R.signFlash.t * 8) % 2 === 0; R.signFlash.mat.color.setRGB(1 + (on ? 0.9 : 0.2) * k, 1 + (on ? 0.9 : 0.2) * k, 1 + (on ? 0.1 : 0) * k); if (R.signFlash.t <= 0) { R.signFlash.mat.color.setRGB(1, 1, 1); R.signFlash = null; } }
   if (R.flash > 0) R.flash -= dt;
   if (R.zoneMsg && R.zoneMsg.t > 0) R.zoneMsg.t -= dt;
-  for (let k = 0; k < 2; k++) {
+  if (!V) for (let k = 0; k < 2; k++) {
     const idx = R.stopIdx + k; const b = bridges[idx % 2];
     if (idx < C.STOPS.length - 1) { b.visible = stopDist(idx) - R.dist < 340; b.position.z = -(stopDist(idx) - R.dist) - 2; if (b.userData.idx !== idx) { setBridgeSign(b, C.STOPS[idx], C.STOP_REGION[idx] + ' · KM ' + C.STOP_KM[idx]); b.userData.idx = idx; } }
     else b.visible = false;
   }
-  roadGate.visible = RUN_LEN - R.dist < 300; roadGate.position.z = -(RUN_LEN - R.dist) - 2;
+  if (!V) { roadGate.visible = RUN_LEN - R.dist < 300; roadGate.position.z = -(RUN_LEN - R.dist) - 2; journeyPortal(dt); }
   if (moralNPC && moral) { moralNPC.root.position.z = -(moralD - R.dist); moralNPC.root.rotation.y = 0; poseHuman(moralNPC, 'wave', dt); moralNPC.mark.position.y = moralNPC.topY + 0.9 + Math.sin(S.t * 6) * 0.15; }
-  const prog = clamp(R.dist / RUN_LEN, 0, 1);
+  const prog = V ? clamp(V.d / V.len, 0, 1) : clamp(R.dist / RUN_LEN, 0, 1);
+  if (V) visSky(dt);
+  else {
   // sky: day → evening → dusk along the journey, storm on Long Bridge
   const stormK = R.boss && R.boss.id === 'storm' ? 1 : 0; R.stormK = (R.stormK || 0) + (stormK - (R.stormK || 0)) * Math.min(1, dt * 1.5);
   PRESETS._base = prog < 0.6 ? blendPreset('day', 'evening', clamp((prog - 0.25) / 0.35, 0, 1)) : blendPreset('evening', 'dusk', clamp((prog - 0.6) / 0.4, 0, 1));
   setSky('_base', 'storm', R.stormK, ev.mod.fog * (1 + R.stormK * 0.6));
   if (R.stormK > 0.01 || R.cloudTint) { R.cloudTint = R.stormK > 0.01; const c = 1 - R.stormK * 0.62; clouds.children.forEach(o => o.material.color.setRGB(c, c, c * 1.05)); }
   lanternLight.intensity = Math.max(prog, R.stormK) * 2.2 * S.lantern / 100;
+  }
   const sh = R.shake > 0 && !SET.reduceMotion ? R.shake * 0.6 : 0;
   R.camX += (R.px - R.camX) * (1 - Math.exp(-11 * dt));   // camera X has its own lag
   R.camH = lerp(R.camH || 0, Math.max(0, R.py), Math.min(1, dt * 6));
   const camY = 3.3 + R.camH * 0.95 - (R.sl > 0 ? 0.35 : 0);
   camera.position.set(R.camX + rand(-sh, sh), camY + rand(-sh, sh), 7.6 + R.camH * 0.5 + Math.min(1.2, Math.max(0, R.speed - 30) * 0.03));
   camera.lookAt(R.camX, 1.25 + R.py * 0.45, -9);
+  if (window.__camDbg) { const c = window.__camDbg; camera.position.set(c[0], c[1], c[2]); camera.lookAt(c[3], c[4], c[5]); }
   // during a roadside bottom sheet, slide the view up so the runner stays visible above it
 
   if (R.kick > 0) R.kick = Math.max(0, R.kick - dt * 9);
@@ -918,6 +1251,7 @@ function updateRun(dt) {
   speedFX(dt);
   sunFollow(R.px, 0);
   fx.update(dt, R.speed, 0);
+  if (V) { if (V.d >= V.len) finishVision(); else hud(prog); return; }
   if (moral && R.dist >= moralD - 1 && !R.boss && !bossWindow(R.dist)) {
     R.moralIdx++; clearObs(a => a.obj.position.z > -45); settleRunner();
     openDialog(moral, true, () => { R.inv = 1.2; setMoralNPC(S.plan.road[R.moralIdx]); });
@@ -948,11 +1282,14 @@ function sunFollow(x, z) {
 
 /* ---- HUD ---- */
 let hudT = 0;
-function hudMode(m) { document.body.classList.toggle('inrun', m === 'run'); el$('btnPause').classList.toggle('hidden', m !== 'run' && m !== 'camp'); if (nameTag) nameTag.visible = m !== 'run'; if (m !== 'run') { document.body.classList.remove('boss-storm', 'boss-goslow', 'boss-market'); ['zoneCard', 'bossCard', 'gust'].forEach(id => $('#' + id).classList.remove('show')); $('#hBoss').className = 'hidden'; } if (m !== 'run') { setOp(el$('darkV'), 0); setOp(el$('speedLines'), 0); $('#hCombo').classList.add('hidden'); $('#hPow').classList.add('hidden'); shieldBubble.visible = false; if (camera.fov !== 62) { camera.fov = 62; camera.updateProjectionMatrix(); } } $('#hud').classList.toggle('hidden', !m); $('#prompt').classList.add('hidden'); $('#hVerse').classList.toggle('hidden', m !== 'run'); hideGateUI(); }
+function hudMode(m) { document.body.classList.toggle('inrun', m === 'run'); document.body.classList.remove('vfin'); el$('btnPause').classList.toggle('hidden', m !== 'run' && m !== 'camp'); if (nameTag) nameTag.visible = m !== 'run'; if (m !== 'run') { document.body.classList.remove('boss-storm', 'boss-goslow', 'boss-market'); ['zoneCard', 'bossCard', 'gust'].forEach(id => $('#' + id).classList.remove('show')); $('#hBoss').className = 'hidden'; } if (m !== 'run') { setOp(el$('darkV'), 0); setOp(el$('speedLines'), 0); $('#hCombo').classList.add('hidden'); $('#hPow').classList.add('hidden'); shieldBubble.visible = false; if (camera.fov !== 62) { camera.fov = 62; camera.updateProjectionMatrix(); } } $('#hud').classList.toggle('hidden', !m); $('#prompt').classList.add('hidden'); $('#hVerse').classList.toggle('hidden', m !== 'run'); hideGateUI(); }
 function hud(prog, info) {
   if ((hudT -= 1) > 0) return; hudT = 6;
-  setTxt(el$('hScore'), '✨ ' + S.score); setW(el$('hLant'), S.lantern); setL(el$('hFloor'), S.floor);
-  if (S.mode === 'run') {
+  setTxt(el$('hScore'), String(S.score)); setTxt(el$('hCoins'), String(S.orbs)); setW(el$('hLant'), S.lantern); setL(el$('hFloor'), S.floor);
+  if (S.mode === 'run' && R.vis) {
+    const V = R.vis, zm = R.zoneMsg && R.zoneMsg.t > 0 ? R.zoneMsg.txt : null;
+    setTxt(el$('hInfo'), zm || `📖 ${V.WD.name} · ${V.boss ? V.WD.boss.icon + ' ' + V.WD.boss.title.toLowerCase().replace(/^the /, '') : V.gi < V.gates.length ? `❓ ${V.gi + 1}/${V.gates.length}` : '✨ exit ahead'} · ${Math.round(R.speed * 3.6)} km/h`);
+  } else if (S.mode === 'run') {
     const i = Math.min(R.stopIdx, C.STOPS.length - 1);
     const km = KM(R.dist);
     const zm = R.zoneMsg && R.zoneMsg.t > 0 && !(R.flash > 0) ? R.zoneMsg.txt : null;
@@ -1008,7 +1345,7 @@ function scorePop() { const el = $('#hScore'); el.classList.remove('bump'); void
 function shakeDOM(big) { if (SET.reduceMotion) return; const c = $('#c3d'); c.classList.remove('shake', 'shake2'); void c.offsetWidth; c.classList.add(big ? 'shake2' : 'shake'); }
 function snapCP(dist, stopIdx, name) { return { dist, stopIdx, name, vGot: R.vGot, S: { score: S.score, orbs: S.orbs, quizRight: S.quizRight, quizTotal: S.quizTotal, lantern: S.lantern, hits: S.hits } }; }
 function knock(a) { a.fly = 9; a.fx = (a.obj.position.x - R.px >= 0 ? 1 : -1) * 6; }
-const BIG_NAMES = { danfo: 'A danfo no gree brake!', truck: 'Trailer wahala!', okada: 'An okada swerved into you!', danfoP: 'You ran into a parked danfo!', danfoR: 'You missed the ramp and hit the danfo!', truckP: 'A stalled trailer blocked the way!', truckR: 'You missed the ramp and hit the trailer!' };
+const BIG_NAMES = { ...VW.VOBS_NAMES, danfo: 'A danfo no gree brake!', truck: 'Trailer wahala!', okada: 'An okada swerved into you!', danfoP: 'You ran into a parked danfo!', danfoR: 'You missed the ramp and hit the danfo!', truckP: 'A stalled trailer blocked the way!', truckR: 'You missed the ramp and hit the trailer!' };
 function onHit(a) {
   const big = !!a.big;
   if (R.fire > 0) { knock(a); S.score += 20; popText('🔥 Smashed through! +20'); sfx.hit(); for (let k = 0; k < 14; k++) fx.emit(R.px + rand(-1, 1), rand(0.5, 2), -1, rand(-4, 4), rand(1, 4), rand(-3, 0), 0.6, 0.7, '#ff8a3d', 1); return false; }
@@ -1040,20 +1377,23 @@ function updatePowers(dt) {
   if (R.fire > 0) { R.fire -= dt; R.inv = Math.max(R.inv, 0.05); for (let k = 0; k < 3; k++) fx.emit(R.px + rand(-0.4, 0.4), rand(0.2, 1.8), rand(0.2, 1.2), rand(-0.6, 0.6), rand(1.5, 3), rand(1, 4), 0.45, 0.55, pick(['#ff5722', '#ffb300', '#ffd54f']), 1.6); if (R.fire <= 0) { R.inv = 0.8; powerHUD(); } }
   if (R.magnet > 0) { R.magnet -= dt; if (R.magnet <= 0) powerHUD(); }
   if (R.shield) { R.shieldT -= dt; if (R.shieldT <= 0) { R.shield = false; powerHUD(); } }
-  shieldBubble.visible = R.shield; if (R.shield) { shieldBubble.position.set(R.px, R.py + 1.2, 0); shieldBubble.material.opacity = 0.14 + 0.06 * Math.sin(S.t * 6); }
+  shieldBubble.visible = R.shield; if (R.shield) { shieldBubble.position.set(R.px, R.py + 1.2, 0); shieldBubble.material.opacity = 0.26 + 0.08 * Math.sin(S.t * 6); shieldBubble.rotation.y = Math.sin(S.t * 0.8) * 0.25; }
+  if (R.wings > 0) { R.wings -= dt; if (playerWings.parent !== player.root) player.root.add(playerWings); playerWings.visible = true; VW.flapWings(playerWings, S.t, 1); if (Math.random() < 0.5) fx.emit(R.px + rand(-1, 1), R.py + 1.4, 0.4, rand(-1, 1), rand(-0.5, 0.5), 1.5, 0.7, 0.3, pick(['#ffffff', '#ffd6e8']), 0.4); if (R.wings <= 0) { R.wings = 0; R.inv = Math.max(R.inv, 0.9); R.onGround = false; R.vy = 0; R.g = 50; powerHUD(); } }
+  else if (playerWings.visible) playerWings.visible = false;
   if (R.dark > 0) { R.dark -= dt; for (let k = 0; k < 2; k++) fx.emit(R.px + rand(-5, 5), rand(0, 3), rand(2.5, 5), rand(-0.5, 0.5), rand(0, 0.6), rand(-2, -0.5), 0.9, 1.6, pick(['#2b2140', '#1d1830', '#3a2d55']), 1.4); }
   const dv = el$('darkV'), dk = R.dark > 0 ? Math.min(1, R.dark / 1.2) * (R.boss && R.boss.id === 'storm' && R.dark < 1 ? 0.55 : 1) : 0; setOp(dv, dk);
   if ((R.popT -= dt) <= 0) { R.popT = 0.25; powerHUD(true); }
   // spawn power-ups now and then
-  if (R.dist >= R.nextPowerD && !inGateZone(R.dist - SPAWN_Z) && R.dist - SPAWN_Z < RUN_LEN - 60) {
-    const k = pick(['shield', 'shield', 'lamp', 'lamp', 'fire']), pu = powerUps.find(p => p.k === k);
+  const V = R.vis, PD = V || R, pdist = V ? V.d : R.dist;
+  if (pdist >= PD.nextPowerD && !(V ? visGateZone(pdist - SPAWN_Z) || V.d - SPAWN_Z > V.len - 80 : inGateZone(R.dist - SPAWN_Z) || R.dist - SPAWN_Z >= RUN_LEN - 60)) {
+    const k = V && !V.wingsGiven ? 'wings' : V ? pick(['wings', 'shield', 'lamp', 'shield', 'fire', 'wings']) : pick(KM(R.dist) > 4 ? ['shield', 'shield', 'lamp', 'lamp', 'fire', 'wings'] : ['shield', 'shield', 'lamp', 'lamp', 'fire']), pu = powerUps.find(p => p.k === k);
     const lanes = shuffle([0, 1, 2]).filter(l => !active.some(a => a.lane === l && Math.abs(a.obj.position.z - SPAWN_Z) < 14));
-    if (pu && !pu.on && lanes.length) { pu.on = true; pu.lane = lanes[0]; pu.g.visible = true; pu.g.position.set(LANES[pu.lane], 1.5, SPAWN_Z); R.nextPowerD = R.dist + rand(520, 820); }
-    else R.nextPowerD = R.dist + 10;
+    if (pu && !pu.on && lanes.length) { pu.on = true; pu.lane = lanes[0]; pu.g.visible = true; pu.g.position.set(LANES[pu.lane], 1.5, SPAWN_Z); PD.nextPowerD = pdist + (V ? rand(380, 560) : rand(520, 820)); if (V && k === 'wings') V.wingsGiven = true; }
+    else PD.nextPowerD = pdist + 10;
   }
   for (const pu of powerUps) {
     if (!pu.on) continue;
-    pu.g.position.z += R.speed * dt; pu.ring.rotation.y += dt * 3; pu.g.position.y = 1.5 + Math.sin(S.t * 3) * 0.2;
+    pu.g.position.z += R.speed * dt; pu.ring.rotation.y += dt * 3; if (pu.k === 'wings') VW.flapWings(pu.g.children[1], S.t, 0.6); pu.g.position.y = 1.5 + Math.sin(S.t * 3) * 0.2;
     if (Math.abs(pu.g.position.z) < 1.2 + R.speed * dt && Math.abs(pu.g.position.x - R.px) < 1.4 && Math.abs(R.py + 1 - pu.g.position.y) < 2) { pu.on = false; pu.g.visible = false; activatePower(pu.k); }
     if (pu.g.position.z > 15) { pu.on = false; pu.g.visible = false; }
   }
@@ -1063,14 +1403,15 @@ function activatePower(k) {
   if (k === 'fire') { R.fire = P0.dur; R.dark = 0; dstat('fire', 1, 'max'); }
   if (k === 'shield') { R.shield = true; R.shieldT = P0.dur; }
   if (k === 'lamp') R.magnet = P0.dur;
-  for (let i = 0; i < 26; i++) fx.emit(R.px, 1.4, 0, rand(-4, 4), rand(0, 5), rand(-3, 3), 0.7, 0.6, k === 'fire' ? '#ffb300' : k === 'shield' ? '#9be7ff' : '#fff3a0', 0.6);
+  if (k === 'wings') { R.wings = P0.dur; R.magnet = Math.max(R.magnet, P0.dur); R.sl = 0; R.jbuf = 0; R.sbuf = 0; if (R.grind) endGrind(); dstat('wings', 1, 'max'); }
+  for (let i = 0; i < 26; i++) fx.emit(R.px, 1.4, 0, rand(-4, 4), rand(0, 5), rand(-3, 3), 0.7, 0.6, k === 'fire' ? '#ffb300' : k === 'shield' ? '#ffe08a' : k === 'wings' ? '#ffe4ef' : '#fff3a0', 0.6);
   popText(`${P0.icon} ${P0.name}!`, 'big');
   toast(`${P0.icon} ${P0.name} · “${P0.line}” (${P0.ref})`, 2200);
   powerHUD();
 }
 function powerHUD(tickOnly) {
   const el = $('#hPow'); if (!R) return;
-  const act = R.fire > 0 ? ['fire', R.fire] : R.magnet > 0 ? ['lamp', R.magnet] : R.shield ? ['shield', R.shieldT] : null;
+  const act = R.wings > 0 ? ['wings', R.wings] : R.fire > 0 ? ['fire', R.fire] : R.magnet > 0 ? ['lamp', R.magnet] : R.shield ? ['shield', R.shieldT] : null;
   if (!act) { el.classList.add('hidden'); return; }
   const P0 = POWERS[act[0]], pct = Math.max(0, act[1] / P0.dur * 100);
   if (!tickOnly || el.classList.contains('hidden') || el.dataset.k !== act[0]) { el.dataset.k = act[0]; el.innerHTML = `${P0.icon} <span>${P0.name}${R.shield && act[0] !== 'shield' ? ' + 🛡️' : ''}</span><i><b></b></i>`; el.classList.remove('hidden'); }
@@ -1085,7 +1426,7 @@ function speedFX() {
   const sl = el$('speedLines'); setOp(sl, k); const f = R.fire > 0 || R.burst > 0; if (sl._f !== f) { sl._f = f; sl.classList.toggle('fire', f); }
 }
 function crash(cause) {
-  if (R.boss) R.boss.crashes++; $('#gust').classList.remove('show');
+  if (R.boss) R.boss.crashes++; if (R.vis && R.vis.boss) R.vis.boss.crashes++; R.wings = 0; playerWings.visible = false; laneWarn.visible = false; $('#gust').classList.remove('show');
   bankRun(false);
   settleRunner(); S.paused = true; sfx.crash(); shakeDOM(true); loseCombo();
   R.fire = 0; R.magnet = 0; R.shield = false; R.dark = 0; shieldBubble.visible = false; setOp(el$('darkV'), 0); setOp(el$('speedLines'), 0); hideGateUI(); powerHUD();
@@ -1093,6 +1434,7 @@ function crash(cause) {
   setTimeout(() => showFallen(cause), 450);
 }
 function showFallen(cause) {
+  if (R.vis) return showFallenVision(cause);
   const v = pick(FALL_VERSES), m = $('#modalBody'), cp = R.cp, cost = 200;
   $('#toast').classList.remove('show');
   const km = KM(R.dist), best = M.bestKm(), isBest = R.newBest;
@@ -1114,8 +1456,8 @@ function showFallen(cause) {
   $('#rStart').onclick = () => { sfx.tap(); R.revived = false; restartFrom(R.cp0); };
 }
 function riseQuestion() {
-  const used = new Set(S.plan.quiz.map(q => q[0])), pool = C.GATE_Q.filter(q => !used.has(q[0]));
-  const q = pick(pool.length ? pool : C.GATE_Q), order = shuffle(q[1].map((t, i) => ({ t, ok: i === q[2] })));
+  const src = R.vis ? BK.WORLDS[R.vis.id].quiz : C.GATE_Q, used = new Set((R.vis ? R.vis.quiz : S.plan.quiz).map(q => q[0])), pool = src.filter(q => !used.has(q[0]));
+  const q = pick(pool.length ? pool : src), order = shuffle(q[1].map((t, i) => ({ t, ok: i === q[2] })));
   R.riseOk = order.findIndex(o => o.ok);
   const m = $('#modalBody');
   m.innerHTML = `<div class="banner dark"><div class="km">ANSWER TO RISE AGAIN</div><div class="name">🙏 ONE QUESTION</div></div>
@@ -1136,6 +1478,8 @@ function revive(msg) {
   toast(msg, 2200); sfx.power();
 }
 function restartFrom(cp) {
+  if (R.vis) leaveVisionWorld();
+  R.visTold = false; R.visSkip = false; R.wings = 0; playerWings.visible = false;
   hide('modal'); fadeFlash(); hideGateUI();
   Object.assign(S, cp.S); S.lantern = Math.max(S.lantern, S.floor);
   if (R.boss) bossEnd(false);
@@ -1154,8 +1498,7 @@ function bankRun(final) {
   const room = M.myRoom(); if (room && km >= 0.5) M.LB.submit(room.code, { name: save.name, km: +km.toFixed(1), score: S.score, week: M.weekKey(), at: Date.now() }).catch(() => {});
 }
 function fadeFlash() { const f = $('#fade'); f.style.transition = 'none'; f.style.opacity = 1; void f.offsetWidth; f.style.transition = 'opacity .5s ease-out'; f.style.opacity = 0; }
-function prepGate(idx) {
-  const q = S.plan.quiz[idx % S.plan.quiz.length];
+function prepGate(idx, q = S.plan.quiz[idx % S.plan.quiz.length]) {
   const order = shuffle([0, 1, 2]);           // order[lane] = option index
   const g = { idx, q, order, correctLane: order.indexOf(q[2]), called: false, shown: false, done: false };
   gateLanes.forEach((L, i) => { drawGateLabel(L.lab, C.shortOpt(q[1][order[i]]), GATE_COLS[i]); L.curtain.material.color.set(GATE_COLS[i]); L.curtain.material.opacity = 0.3; });
@@ -1207,8 +1550,8 @@ function passStop(idx) {
 }
 function autoSteer(dt) {   // test helper (?autopilot): steer to the right gate / scroll, slide, jump, use ramps and rails
   R.autoT -= dt;
-  let want = R.lane; const g = R.gate, gd = g ? gateDist(g.idx) - R.dist : 1e9;
-  if (g && g.shown && !g.done && gd < 90) want = AUTO_MIX && g.idx === 1 ? (g.correctLane + 1) % 3 : g.correctLane;
+  let want = R.lane; const g = R.gate, gd = g ? gateGD(g) : 1e9;
+  if (g && g.shown && !g.done && gd < 90) want = AUTO_MIX && (g.idx === 1 || g.idx === 101) ? (g.correctLane + 1) % 3 : g.correctLane;
   else { const sc = scrolls.find(s => s.on && s.obj.position.z < -1 && s.obj.position.z > -60); if (sc) want = sc.lane; else { const r = active.find(a => (a.grind || a.ramp) && a.obj.position.z > -60 && a.obj.position.z < -8); if (r && AUTO_FUN) want = r.lane; } }
   const look = Math.max(18, R.speed * 0.42);
   const wall = (a, l) => {
@@ -1217,14 +1560,15 @@ function autoSteer(dt) {   // test helper (?autopilot): steer to the right gate 
     if (a.cross) return Math.abs(a.obj.position.x - LANES[l]) < 2;
     if (a.slide || a.jump) return false;
     if (a.surf) { if (R.py >= a.surf - 0.9 && l === R.lane) return false; if (a.ramp && l === R.lane && (z + a.len / 2 + a.ramp < 0 || R.py >= a.surf * (1 - Math.max(0, -(z + a.len / 2)) / a.ramp) - 0.35)) return false; if (a.ramp && !a.big) return false; return true; }
-    return a.big || a.type === 'hawker';
+    return a.big || a.type === 'hawker' || a.type === 'vDrop';
   };
-  const danger = l => active.some(a => wall(a, l));
+  const cw = R.vis && R.vis.boss && R.vis.boss.warn && R.vis.WD.boss.id === 'chariots' ? R.vis.boss.warn.lane : -1;
+  const danger = l => l === cw || chariots.some(c => c.on && c.lane === l && c.obj.position.z > -6) || active.some(a => wall(a, l));
   if (danger(want) && !(g && g.shown && !g.done && gd < 20)) { const alt = [0, 1, 2].filter(l => !danger(l)).sort((x, y) => Math.abs(x - R.lane) - Math.abs(y - R.lane))[0]; if (alt !== undefined) want = alt; }
   if (want !== R.lane && R.autoT <= 0 && !danger(R.lane + Math.sign(want - R.lane)) ) { runMove(Math.sign(want - R.lane)); R.autoT = 0.12; }
   else if (want !== R.lane && R.autoT <= 0 && danger(R.lane)) { runMove(Math.sign(want - R.lane)); R.autoT = 0.12; }
   const T = airT(), jd = R.speed * T * 0.42;
-  if (R.onGround && active.some(a => !a.hit && a.lane === R.lane && a.jump && a.obj.position.z > -jd - 2.5 && a.obj.position.z < -jd + 1.5 && R.py < 0.5)) runJump();
+  if (R.onGround && active.some(a => !a.hit && (a.wide || a.lane === R.lane) && a.jump && a.obj.position.z > -jd - 2.5 && a.obj.position.z < -jd + 1.5 && R.py < 0.5)) runJump();
   if (R.sl <= 0.05 && active.some(a => !a.hit && a.slide && (a.wide || a.lane === R.lane) && a.obj.position.z > -R.speed * 0.2 - 2 && a.obj.position.z < 0.5)) runSlide();
 }
 function arriveGate() {
@@ -1640,6 +1984,7 @@ canvas.addEventListener('pointerup', e => {
    ========================================================= */
 let titleDanfo = null;
 function enterTitle() {
+  if (R && R.vis) leaveVisionWorld(); Object.values(portals).forEach(p => p.visible = false); laneWarn.visible = false; playerWings.visible = false;
   endTutorial(true); hide('pause'); S.userPause = null;
   S.mode = 'title'; S.paused = false; S.shop = false; S.slowmo = false; S.dlgOpen = false; document.body.classList.remove('dlg-run'); RW.visible = true; CW.visible = false; hudMode(null); resetGround(); hide('shop'); setMoralNPC(null); clearObs(); orbs.forEach(o => o.on = false); hideOrbs();
   buildPlayer();
@@ -1757,6 +2102,7 @@ $('#btnNew').addEventListener('click', () => {
 });
 $('#btnContinue').addEventListener('click', () => { ensureAudio(); sfx.good(); hide('title'); buildPlayer(); chapterIntro(); });
 $('#btnHow').addEventListener('click', () => { ensureAudio(); sfx.tap(); show('howto'); });
+$('#btnBible').addEventListener('click', () => { ensureAudio(); sfx.tap(); openBibleMap(); });   // v10
 $('#btnCreator').addEventListener('click', () => { ensureAudio(); sfx.tap(); enterSelect(); });
 $('#btnVerses').addEventListener('click', () => {
   ensureAudio(); sfx.tap();
@@ -1779,7 +2125,7 @@ $('#btnGo').addEventListener('click', () => {
 /* =========================================================
    META SCREENS: daily challenges, shop, youth-group leaderboard
    ========================================================= */
-const LANTERN_KIND = { l_hurricane: 'hurricane', l_star: 'star', l_dove: 'dove', l_flame: 'flame' };
+const LANTERN_KIND = { l_hurricane: 'hurricane', l_star: 'star', l_dove: 'dove', l_flame: 'flame', l_oil: 'oil' };
 function allOutfits(g) { return [...PLAYER_OUTFITS[g], ...SHOP_OUTFITS.map(o => o[g])]; }
 function outfitOwned(i) { return i < 3 || M.wallet().owned.includes(SHOP_OUTFITS[i - 3]?.id); }
 function dailyHTML() {
@@ -1993,7 +2339,7 @@ function pauseGame(reason) {
   if (!(S.mode === 'run' || S.mode === 'camp') || S.userPause) return;
   S.userPause = { prev: S.paused }; S.paused = true;
   $('#pauseNote').textContent = reason === 'away' ? 'Paused while you were away.' : 'Take a breath. The road will wait for you.';
-  const cpb = $('#btnPauseCP'), canCP = S.mode === 'run' && R && R.cp && !$('#modal').classList.contains('show'); cpb.classList.toggle('hidden', !canCP); if (canCP) cpb.textContent = R.cp.stopIdx > 0 ? `↩ Restart from ${R.cp.name} bus stop` : '↩ Restart from Lagos (the start)';
+  const cpb = $('#btnPauseCP'), canCP = S.mode === 'run' && R && R.cp && !$('#modal').classList.contains('show'); cpb.classList.toggle('hidden', !canCP); if (canCP) cpb.textContent = R.vis ? '🔁 Restart the vision' : R.cp.stopIdx > 0 ? `↩ Restart from ${R.cp.name} bus stop` : '↩ Restart from Lagos (the start)';
   show('pause'); if (actx && actx.state === 'running') actx.suspend();
 }
 function resumeGame() {
@@ -2004,7 +2350,7 @@ function resumeGame() {
 $('#btnPause').addEventListener('click', e => { e.stopPropagation(); ensureAudio(); sfx.tap(); pauseGame(); });
 $('#btnResume').addEventListener('click', () => { sfx.tap(); resumeGame(); });
 // v9: restart from the last bus stop straight from the pause menu
-$('#btnPauseCP').addEventListener('click', () => { if (S.mode !== 'run' || !R || !R.cp) return; sfx.tap(); S.userPause = null; hide('pause'); ['dialog', 'settings', 'howto'].forEach(hide); S.dlgOpen = false; S.slowmo = false; document.body.classList.remove('dlg-run'); setMoralNPC(S.plan.road[R.moralIdx] || null); bankRun(false); restartFrom(R.cp); });
+$('#btnPauseCP').addEventListener('click', () => { if (S.mode !== 'run' || !R || !R.cp) return; sfx.tap(); S.userPause = null; hide('pause'); ['dialog', 'settings', 'howto'].forEach(hide); S.dlgOpen = false; S.slowmo = false; document.body.classList.remove('dlg-run'); setMoralNPC(S.plan.road[R.moralIdx] || null); bankRun(false); if (R.vis) restartVision(); else restartFrom(R.cp); });
 $('#btnPauseSet').addEventListener('click', openSettings);
 $('#btnPauseHow').addEventListener('click', () => { sfx.tap(); show('howto'); });
 $('#btnQuit').addEventListener('click', () => { sfx.tap(); S.userPause = null; hide('pause'); ['dialog', 'modal', 'settings', 'howto'].forEach(hide); S.paused = false; S.dlgOpen = false; if (R && R.boss) bossEnd(false); enterTitle(); });
@@ -2144,16 +2490,23 @@ window.LR = {
   power(k) { if (R) activatePower(k); },
   get riseOk() { return R ? R.riseOk : -1; },
   study() { if (K) { K.x = K.funke.root.position.x; K.z = K.funke.root.position.z + 2.2; K.tx = null; } },
-  get gate() { return R && R.gate ? { idx: R.gate.idx, shown: R.gate.shown, done: R.gate.done, gd: gateDist(R.gate.idx) - R.dist, lane: R.lane, correct: R.gate.correctLane } : null; },
+  get gate() { return R && R.gate ? { idx: R.gate.idx, shown: R.gate.shown, done: R.gate.done, gd: gateGD(R.gate), vi: R.gate.vi, lane: R.lane, correct: R.gate.correctLane } : null; },
   get run() { return R ? { combo: R.combo, fire: R.fire, shield: R.shield, magnet: R.magnet, dark: R.dark, revived: R.revived, cp: R.cp && R.cp.name, speed: R.speed, vGot: R.vGot, parts: S.plan.verse.parts.length, quizRight: S.quizRight, quizTotal: S.quizTotal, moral: R.moralIdx } : null; },
   get encCount() { return K ? K.enc.length : 0; },
   pattern(k) { FORCE.pattern = k; if (R) R.nextRow = Math.min(R.nextRow, 1); },
-  km(k) { if (!R) return; if (R.boss) bossEnd(false); hideGateUI(); R.dist = k * UPK; R.stopIdx = STOP_D.findIndex(d => d > R.dist); R.gate = null; R.kmInt = Math.floor(k); R.nextScrollD = R.dist + 100; clearObs(); R.nextRow = 30; R.zone = -1;
+  km(k) { if (!R) return; if (R.vis) leaveVisionWorld(); if (R.boss) bossEnd(false); hideGateUI(); R.dist = k * UPK; R.stopIdx = STOP_D.findIndex(d => d > R.dist); R.gate = null; R.kmInt = Math.floor(k); R.nextScrollD = R.dist + 100; clearObs(); R.nextRow = 30; R.zone = -1;
     let mi = 0; while (mi < MORAL_AFTER.length && moralDist(mi) < R.dist - 1) mi++; if (mi !== R.moralIdx) { R.moralIdx = mi; setMoralNPC(S.plan.road[mi] || null); } },
   get j() { return R ? { km: KM(R.dist), zone: zoneAt(KM(R.dist)).id, boss: R.boss && R.boss.id, bossDone: Object.keys(R.bossDone), py: R.py, onGround: R.onGround, sl: R.sl, grind: R.grind, grindM: R.grindM, roofs: R.roofs, slides: R.slides, speed: R.speed, lane: R.lane, burst: R.burst } : null; },
   get meta() { return { wallet: M.wallet(), daily: M.dailyState(), list: M.dailyFor().map(c => c.id), streak: M.streak(), best: M.bestKm(), room: M.myRoom() }; },
   give(n) { M.earn(n); },
   debugPx() { return R ? R.px : null; },
+  vision(id) { startVisionRun(id || 'genesis'); },
+  visD(d) { if (R && R.vis) { const V = R.vis; if (V.boss && d < VIS_BOSS[0]) visBossEnd(false); V.d = d; while (V.gi < V.gates.length && V.gates[V.gi] < d - 2) V.gi++; R.gate = null; hideGateUI(); clearObs(); R.nextRow = 20; V.nextScrollD = d + 40; V.nextPowerD = d + 60; } },
+  get vis() { const V = R && R.vis; return V ? { id: V.id, d: Math.round(V.d), len: V.len, gi: V.gi, right: V.right, total: V.total, vGot: V.vGot, parts: V.verse.parts.length, boss: !!V.boss, bossDone: V.bossDone, bossK: +V.bossK.toFixed(2), finished: !!V.finished, journey: V.journey, wings: +(R.wings || 0).toFixed(2), py: +R.py.toFixed(2), lamps: !!V.W.lamps, chariots: chariots.filter(c => c.on).length, speed: +R.speed.toFixed(1) } : null; },
+  get visBook() { return R ? { book: R.visBook, skip: R.visSkip, portalD: visPortalD(), last: R.lastVision || null } : null; },
+  get bible() { return bible(); },
+  bibleMap() { openBibleMap(); },
+  bookCard(id) { openBibleMap(); openBookCard(id); },
   combo(n) { if (R) addCombo(n); },
   get v9() { return R ? { gentle: isGentle(), moralD: MORAL_AFTER.map((_, i) => +KM(moralDist(i)).toFixed(2)), moralIdx: R.moralIdx, nearN: R.nearN || 0, kick: R.kick || 0, dlg: !!S.dlgOpen, fov: +camera.fov.toFixed(1) } : null; },
   look(l, rot) { if (S.mode !== 'select') return false; selLook = LK.fixLook({ ...selLook, ...l }); selG = selLook.gender; if (rot != null) selRot = rot; selIdle = -999; paintSelect(); return true; },

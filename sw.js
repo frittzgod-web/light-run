@@ -1,9 +1,9 @@
 // Light Run service worker: offline play + versioned caching.
 // Bump VERSION on every release: the new worker precaches fresh files and deletes old caches.
-const VERSION = 'lr-v9.0.0';
+const VERSION = 'lr-v10.0.0';
 const CORE = [
   './', 'index.html', 'style.css', 'manifest.webmanifest',
-  'js/main.js', 'js/toon.js', 'js/chibi.js', 'js/props.js', 'js/look.js', 'js/meta.js', 'js/content.js', 'js/lb-config.js', 'js/vendor/three.min.js',
+  'js/main.js', 'js/toon.js', 'js/chibi.js', 'js/props.js', 'js/look.js', 'js/meta.js', 'js/content.js', 'js/books.js', 'js/worlds.js', 'js/lb-config.js', 'js/vendor/three.min.js',
   'icons/icon-192.png', 'icons/icon-512.png', 'icons/maskable-512.png',
   'classic/', 'classic/index.html', 'classic/style.css', 'classic/game.js',
 ];

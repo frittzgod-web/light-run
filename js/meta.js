@@ -27,6 +27,7 @@ export const SHOP = {
     { id: 'l_star', name: 'Morning star', price: 400, icon: '⭐', note: 'Twinkling star trail (Revelation 22:16).', trail: '#fff59d' },
     { id: 'l_dove', name: 'Dove lamp', price: 650, icon: '🕊️', note: 'Soft white feather trail (Matthew 3:16).', trail: '#ffffff' },
     { id: 'l_flame', name: 'Pentecost flame', price: 900, icon: '🔥', note: 'Flickering flame trail (Acts 2:3).', trail: '#ff8a1e' },
+    { id: 'l_oil', name: 'Golden oil lamp', price: 750, icon: '🪔', note: '“Pure oil olive beaten for the light, to cause the lamps to burn continually” (Leviticus 24:2).', trail: '#ffc94a' },
   ],
   trails: [
     { id: 't_none', name: 'No trail', price: 0, icon: '·', note: 'Just your feet and the road.' },
@@ -57,6 +58,10 @@ export const DAILY_POOL = [
   { id: 'fire', t: 'Catch Holy Ghost Fire', n: 1, stat: 'fire', r: 50 },
   { id: 'km', t: 'Run 25 km in total today', n: 25, stat: 'km', r: 80 },
   { id: 'goslow', t: 'Beat the Ibafo go-slow', n: 1, stat: 'goslow', r: 120 },
+  // v10: Bible visions
+  { id: 'vision', t: 'Complete a Bible vision', n: 1, stat: 'vision', r: 120 },
+  { id: 'bookq', t: 'Answer 3 Bible-book questions right', n: 3, stat: 'bookq', r: 80 },
+  { id: 'wings', t: 'Fly with the angel wings', n: 1, stat: 'wings', r: 60 },
 ];
 export function dailyFor(day = todayKey()) {
   const rnd = seeded(hash('lr-daily-' + day)), pool = DAILY_POOL.slice(), out = [];

@@ -411,3 +411,71 @@ body.qon #map{height:14px;margin-top:2px}
 .ctabs-wrap.more-r .ctmore{display:flex}
 @keyframes ctnudge{0%,100%{transform:translateY(-55%)}50%{transform:translate(4px,-55%)}}
 #btnPauseCP{margin-top:8px}
+/* ===== v10: Bible visions, Bible map, concept HUD ===== */
+/* HUD: blue shield-of-faith badge + light bar (left), gold SCORE centre, COINS with a coin, rounded-square pause */
+.lant .badge{flex:none;width:22px;height:25px;background:no-repeat center/contain url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 44 50'%3E%3Cpath d='M22 2 L40 8 V24 C40 36 32 44 22 48 C12 44 4 36 4 24 V8 Z' fill='%231e6fe0' stroke='%23ffd23f' stroke-width='3.5'/%3E%3Cpath d='M22 2 L40 8 V24 C40 36 32 44 22 48 Z' fill='%23155bc0'/%3E%3Crect x='19' y='11' width='6' height='27' rx='1.5' fill='%23fff'/%3E%3Crect x='12' y='18' width='20' height='6' rx='1.5' fill='%23fff'/%3E%3C/svg%3E");filter:drop-shadow(0 1px 0 #1a1206)}
+.pill.score{display:flex;align-items:center;justify-content:center;gap:5px;white-space:nowrap;padding:4px 10px;min-width:0}
+.pill.score .lbl{font-size:10px;font-weight:900;letter-spacing:.5px;color:#ffe9a6;opacity:.9}
+#hScore{font-size:16px;font-weight:1000;color:#ffd23f;background:linear-gradient(#fff38a,#ffc21a 60%,#ff9800);-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent;filter:drop-shadow(0 1px 0 #1a1206);display:inline-block}
+.pill.score .coins{display:flex;align-items:center;gap:3px;margin-left:4px;padding-left:7px;border-left:1.5px solid rgba(255,255,255,.22)}
+.pill.score .coins i{width:13px;height:13px;border-radius:50%;background:radial-gradient(circle at 35% 30%,#fff6b0,#ffc21a 45%,#d48800);border:1.5px solid #7a4a00;box-shadow:inset 0 0 0 2px rgba(255,255,255,.25)}
+.pill.score .coins em{font-style:normal;font-size:13px;font-weight:900;color:#fff}
+.pill.score .coins .lbl{display:none}
+@media (min-width:400px){.pill.score .coins .lbl{display:inline}}
+@media (max-width:370px){.pill.score .lbl:first-child{display:none}}
+.pausebtn{border-radius:12px!important}
+body.inrun #snd{border-radius:12px}
+/* title: Bible map button */
+.btn.bible{background:linear-gradient(180deg,#5b8cff,#2f5fd8);color:#fff;font-size:18px;padding:9px 12px;margin:6px 0 8px;text-shadow:0 2px 0 rgba(0,0,0,.35)}
+.btn.bible small{display:block;font-size:11.5px;font-weight:700;opacity:.92;text-shadow:none}
+/* Bible map */
+#bible .card.bmap{max-width:440px;width:100%;max-height:calc(100dvh - 32px);overflow:auto}
+.bmhead{display:flex;align-items:center;justify-content:space-between}.bmhead h2{margin:0}
+.bmx{position:static!important;width:36px!important;height:36px!important;font-size:15px;background:#fff}
+.bprog{position:relative;height:16px;background:#eee3c8;border:2px solid #1a1206;border-radius:999px;overflow:hidden;margin:6px 0 4px}
+.bprog i{position:absolute;left:0;top:0;bottom:0;background:linear-gradient(90deg,#ffd23f,#ff9800)}
+.bprog span{position:relative;display:block;text-align:center;font-size:11px;font-weight:900;line-height:12px}
+.bsec{margin:12px 0 6px;font-size:15px}.bsec small{font-size:11px;opacity:.6}
+.bgrid{display:grid;grid-template-columns:repeat(4,1fr);gap:6px}
+.btile{display:flex;flex-direction:column;align-items:center;gap:1px;padding:6px 2px 5px;border:2px solid #1a1206;border-radius:12px;background:#f3ecdc;color:#1a1206;font-family:inherit;min-height:66px;cursor:pointer;box-shadow:0 2px 0 #1a1206}
+.btile i{font-style:normal;font-size:20px;line-height:1.1}
+.btile b{font-size:10.5px;line-height:1.1;text-align:center}
+.btile em{font-style:normal;font-size:10px;font-weight:800;opacity:.75}
+.btile.soon{opacity:.55;filter:grayscale(.6)}
+.btile.lock{background:#e4ddd0}
+.btile.play{background:linear-gradient(180deg,#fff6cf,#ffd96a);box-shadow:0 2px 0 #1a1206,0 0 0 3px rgba(255,210,63,.45);animation:bglow 2.2s ease-in-out infinite}
+.btile.play em{opacity:1;color:#8a4b00}
+.btile.done{background:linear-gradient(180deg,#e6ffd8,#9be37a);animation:none}
+@keyframes bglow{50%{box-shadow:0 2px 0 #1a1206,0 0 0 5px rgba(255,210,63,.7)}}
+.stars{color:#ffb300;letter-spacing:1px;text-shadow:0 1px 0 #7a4a00}.stars i{font-style:normal;color:rgba(0,0,0,.18);text-shadow:none}
+.vstars{text-align:center;font-size:36px;margin:6px 0}
+.btag{font-weight:700;margin:6px 0}
+.bboss{display:flex;gap:10px;align-items:center;background:#2a1a3a;color:#fff;border-radius:12px;padding:8px 10px;margin:8px 0}.bboss span{font-size:28px}.bboss small{display:block;opacity:.85;font-size:12px}
+.verse.locked{opacity:.6;font-style:normal}
+.unl{background:#fff3c4;border:2px dashed #e0a800;border-radius:10px;padding:6px 8px;font-weight:800}
+.banner.vis{background:linear-gradient(135deg,#3d7bff,#1a3a8a)}
+.banner.vis-genesis{background:linear-gradient(135deg,#5fbf4a,#1f7a3a)}
+.banner.vis-exodus{background:linear-gradient(135deg,#1fb5c9,#0b4a7a)}
+.banner.vis-leviticus{background:linear-gradient(135deg,#f0a24a,#9a5a20)}
+#zoneCard.vision b{color:#ffe38a}
+/* boss bar colours for the vision bosses */
+#hBoss.boss-flood i b{background:linear-gradient(90deg,#7fd3ff,#2a7fd6)}
+#hBoss.boss-chariots i b{background:linear-gradient(90deg,#ffd23f,#d8431e)}
+#hBoss.boss-collapse i b{background:linear-gradient(90deg,#ffe0a8,#c27a45)}
+#bossCard.vis.flood{background:linear-gradient(135deg,rgba(20,60,110,.92),rgba(10,25,50,.92))}
+#bossCard.vis.chariots{background:linear-gradient(135deg,rgba(120,30,10,.92),rgba(40,10,5,.92))}
+#bossCard.vis.collapse{background:linear-gradient(135deg,rgba(130,80,30,.92),rgba(50,30,10,.92))}
+/* in a vision the expressway map strip is replaced by the vision progress bar */
+body.invis #map{display:none}
+body.invis .prog{height:6px}
+body.invis .prog i{background:linear-gradient(90deg,#fff3a0,#ffd23f)}
+/* v10: warnings (wind, waves, chariots, falling stones) sit in a slim strip under the HUD, never over the runner */
+#gust{top:calc(168px + env(safe-area-inset-top));left:50%;transform:translateX(-50%);font-size:14px;padding:4px 12px;border-width:2px;white-space:nowrap;max-width:94vw;overflow:hidden;text-overflow:ellipsis}
+#gust.show{animation:gustb .35s infinite alternate}
+@keyframes gustb{to{box-shadow:0 0 0 4px rgba(155,231,255,.45)}}
+body.boss-v-chariots #gust{background:rgba(120,30,10,.82);border-color:#ffb37a}
+body.boss-v-collapse #gust{background:rgba(110,70,25,.82);border-color:#ffe0a8}
+.hrow .lant{flex:1}.hrow .pill.score{flex:1.35}
+#bible .bmhead{padding-right:44px}
+
+body.vfin #btnPause{visibility:hidden}   /* vision results card: no pause button over it */
