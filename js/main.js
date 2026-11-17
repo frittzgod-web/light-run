@@ -22,7 +22,7 @@ const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;',
 const params = new URLSearchParams(location.search);
 const TIME_SCALE = clamp(+params.get('speed') || 1, 1, 8);
 const LITE = params.has('lite');
-const APP_VER = 'v14.4';   // shown on the title, pause and settings so a phone can tell which build it runs
+const APP_VER = 'v14.5';   // shown on the title, pause and settings so a phone can tell which build it runs
 const DEBUG = params.has('debug');
 const NOVIS = params.has('novision'), NOSTORY = params.has('nostory');   // v14.3: ?nostory skips the episode story card (tests)   // v10 test switch: journey without the vision gate
 const AUTO = params.has('autopilot'), AUTO_MIX = params.get('autopilot') === 'mix', AUTO_FUN = AUTO;
@@ -46,15 +46,17 @@ const GPU = gpuName();
 function detectTier() {
   const mem = navigator.deviceMemory || 4, cores = navigator.hardwareConcurrency || 4;
   if (/swiftshader|llvmpipe|software|mali-4|mali-t[67]|adreno \(tm\) [34]\d\d|powervr sgx/i.test(GPU) || mem <= 2 || cores <= 4) return 'low';
-  if (mem >= 6 && cores >= 8 && !/mali-g[5-6]\d|adreno \(tm\) 5\d\d/i.test(GPU)) return 'high';
+  if (mem >= 8 && cores >= 8 && !/mali-g[5-6]\d|adreno \(tm\) 5\d\d/i.test(GPU)) return 'high';
   return 'med';
 }
 const QUALITY = {
-  high: { prMax: Math.min(DPR, 1.5), prMin: 0.9, shadows: true, shadowSize: 1024, sceneryOutlines: true, fx: 1, cap: 60 },
-  med: { prMax: Math.min(DPR, 1.25), prMin: 0.75, shadows: true, shadowSize: 512, sceneryOutlines: false, fx: 0.75, cap: 60 },
+  high: { prMax: Math.min(DPR, 1.35), prMin: 0.9, shadows: true, shadowSize: 1024, sceneryOutlines: true, fx: 1, cap: 60 },
+  med: { prMax: Math.min(DPR, 1.1), prMin: 0.75, shadows: true, shadowSize: 512, sceneryOutlines: false, fx: 0.75, cap: 60 },
   low: { prMax: Math.min(DPR, 1), prMin: 0.6, shadows: false, shadowSize: 512, sceneryOutlines: false, fx: 0.5, cap: 30 },
 };
-const AUTO_TIER = detectTier();
+// v14.5 lag fix: a phone that had to step down once starts on that lower tier next time (saved per device)
+const TIER_RANK = { low: 0, med: 1, high: 2 }, AUTO_SAVED = localStorage.getItem('lr_autoTier');
+const AUTO_TIER = (t => AUTO_SAVED && TIER_RANK[AUTO_SAVED] < TIER_RANK[t] ? AUTO_SAVED : t)(detectTier());
 const pickTier = () => LITE ? 'low' : params.get('gfx') ? ({ high: 'high', balanced: 'med', battery: 'low' }[params.get('gfx')] || 'med') : SET.gfx === 'auto' ? AUTO_TIER : ({ high: 'high', balanced: 'med', battery: 'low' }[SET.gfx] || 'med');
 let TIER = pickTier(), Q = QUALITY[TIER]; setCharTier(TIER); setVehTier(TIER);
 let PR = Q.prMax;
@@ -911,9 +913,22 @@ function hideRoadWorld(on) {
   if (on) { visHidden = []; for (const o of RW.children) { if (keep.has(o) || String(o.userData.tag || '').startsWith('obs-')) continue; if (o.visible) { visHidden.push(o); o.visible = false; } } lampGlow.visible = false; }
   else { for (const o of visHidden) o.visible = true; visHidden = []; }
 }
+// v14.5: questions are shuffled every run. Fisher-Yates order, A/B/C lanes shuffled in prepGate, and the questions you saw
+// in your last runs are skipped while the pool allows (ids kept in localStorage 'lr_recentQ', last 40).
+const RQ_KEY = 'lr_recentQ';
+function recentQ() { try { return JSON.parse(localStorage.getItem(RQ_KEY)) || []; } catch (e) { return []; } }
+function markSeen(qs) { try { const r = recentQ().filter(t => !qs.some(q => q[0] === t)); r.push(...qs.map(q => q[0])); localStorage.setItem(RQ_KEY, JSON.stringify(r.slice(-40))); } catch (e) {} }
+function freshPick(pool, rec, taken) {
+  const rq = recentQ(), seen = new Set(rq), ok = pool.filter(q => !taken.has(q[0]));
+  const tiers = [ok.filter(q => !seen.has(q[0]) && !(rec && rec.q[q[0]])), ok.filter(q => !seen.has(q[0]))].find(t => t.length);
+  if (tiers) return pick(tiers);
+  const old = (ok.length ? ok : pool).slice().sort((x, y) => rq.indexOf(x[0]) - rq.indexOf(y[0]));   // all seen lately: the one seen longest ago
+  return old[0];
+}
 function visQuiz(WD, rec) {
-  const Q = WD.quiz;
-  return ['e', 'm', 'h'].map(l => { const pool = Q.filter(q => q[4] === l), fresh = pool.filter(q => !rec.q[q[0]]); return pick(fresh.length ? fresh : pool); });
+  const Q = WD.quiz, taken = new Set();
+  const out = shuffle(['e', 'm', 'h']).map(l => { let pool = Q.filter(q => q[4] === l); if (!pool.length) pool = Q; const q = freshPick(pool, rec, taken); taken.add(q[0]); return q; });
+  markSeen(out); return out;
 }
 function pickBookVerse(WD, rec) { const vs = WD.verses, fresh = vs.filter(v => !rec.v.includes(v.ref)); return fresh.length ? fresh[0] : pick(vs); }
 function visSpeed() { const V = R.vis; return Math.min(MAX_SPEED, V.s0 + (V.d / V.len) * 9 + (V.boss ? 2 : 0)); }
@@ -954,9 +969,9 @@ function storyCard() {
     <div class="vstars">${starsHTML(er.stars || 0)}</div>
     <button class="btn primary" id="stGo">▶ Run</button>`;
   show('modal'); document.body.classList.add('storyon'); m.scrollTop = 0;
-  const go = () => { clearInterval(storyCard.t); if (!S.story) return; S.story = false; document.body.classList.remove('storyon'); hide('modal'); S.paused = false; if (R) { R.inv = Math.max(R.inv, 1.0); } sfx.tap(); };
+  const go = () => { clearInterval(storyCard.t); if (!S.story) return; S.story = false; document.body.classList.remove('storyon'); hide('modal'); unpause(); if (R) { R.inv = Math.max(R.inv, 1.0); } sfx.tap(); };
   $('#stGo').onclick = go; clearInterval(storyCard.t);
-  if (er.plays > 1) { let c = 4; $('#stGo').textContent = `▶ Run (${c})`; storyCard.t = setInterval(() => { c--; if (!S.story) return clearInterval(storyCard.t); if (c <= 0) go(); else $('#stGo').textContent = `▶ Run (${c})`; }, 1000); }
+  if (er.plays > 1) { let c = 4; $('#stGo').textContent = `▶ Run (${c})`; storyCard.t = setInterval(() => { if (S.userPause) return; c--; if (!S.story) return clearInterval(storyCard.t); if (c <= 0) go(); else $('#stGo').textContent = `▶ Run (${c})`; }, 1000); }
 }
 function leaveVisionWorld() { document.body.classList.remove('vfin');
   const V = R && R.vis; if (!V) return;
@@ -1154,7 +1169,7 @@ function restartVision() {
 }
 function leaveVisionEarly() {   // journey only: skip the vision and carry on along the expressway
   const k = R.visSlot ?? 0; if (R.visSlots && R.visSlots[k]) R.visSlots[k].state = 'skip';
-  hide('modal'); leaveVisionWorld(); R.dist = visPortalD(k) + 5; settleRunner(); R.inv = 2; R.nextRow = 30; S.paused = false; R.zone = -1;
+  hide('modal'); leaveVisionWorld(); R.dist = visPortalD(k) + 5; settleRunner(); R.inv = 2; R.nextRow = 30; unpause(); R.zone = -1;
   toast(nextSlot() >= 0 ? '🛣️ Back on the expressway. Another vision gate opens a few km down the road.' : '🛣️ Back on the expressway. The vision gates open again on your next run.', 2400);
 }
 function showFallenVision(cause) {
@@ -1642,7 +1657,7 @@ function showFallen(cause) {
 }
 function riseQuestion() {
   const src = R.vis ? R.vis.WD.quiz : C.GATE_Q, used = new Set((R.vis ? R.vis.quiz : S.plan.quiz).map(q => q[0])), pool = src.filter(q => !used.has(q[0]));
-  const q = pick(pool.length ? pool : src), order = shuffle(q[1].map((t, i) => ({ t, ok: i === q[2] })));
+  const q = freshPick(pool.length ? pool : src, null, new Set()), order = shuffle(q[1].map((t, i) => ({ t, ok: i === q[2] })));
   R.riseOk = order.findIndex(o => o.ok);
   const m = $('#modalBody');
   m.innerHTML = `<div class="banner dark"><div class="km">ANSWER TO RISE AGAIN</div><div class="name">🙏 ONE QUESTION</div></div>
@@ -1657,7 +1672,7 @@ function riseQuestion() {
   }));
 }
 function revive(msg) {
-  R.revived = true; hide('modal'); S.paused = false; player.root.rotation.x = 0;
+  R.revived = true; hide('modal'); unpause(); player.root.rotation.x = 0;
   R.inv = 2.2; R.stumble = 0; R.dark = 0; R.lastStumble = -99; R.t = Math.min(R.t, 2);
   clearObs(a => a.obj.position.z > -40);
   toast(msg, 2200); sfx.power();
@@ -1673,7 +1688,7 @@ function restartFrom(cp) {
   Object.assign(R, { dist: cp.dist, stopIdx: cp.stopIdx, vGot: cp.vGot, nextScrollD: cp.dist + 60, nextPowerD: cp.dist + 200, gate: null, t: 0, combo: 0, comboT: 0, fire: 0, magnet: 0, shield: false, stumble: 0, lastStumble: -99, dark: 0, inv: 1.5, nextRow: 30, lane: 1, px: 0, pv: 0, camX: 0, py: 0, vy: 0, onGround: true, sl: 0, burst: 0, grind: false, zone: -1, kmInt: Math.floor(KM(cp.dist)), startT: cp.dist ? R.startT : performance.now() });
   if (!cp.dist) R.bossDone = {};
   clearObs(); orbs.forEach(o => o.on = false); hideScrolls(); powerUps.forEach(p => { p.on = false; p.g.visible = false; });
-  player.root.rotation.x = 0; verseHUD(); comboHUD(); powerHUD(); S.paused = false;
+  player.root.rotation.x = 0; verseHUD(); comboHUD(); powerHUD(); unpause();
   toast(`↩ Back at ${cp.name}. Run with endurance! (Hebrews 12:1)`, 2200);
 }
 // bank the light earned this attempt, record distance, post to the youth-group board
@@ -1837,7 +1852,7 @@ function openDialog(enc, runMoral, onDone, zone) {
       outcome({ out: c.retry.out, verse: c.retry.verse }, [`<span class="chip">${C.VIRTUES[vk]} +1 ${vk}</span>`, `<span class="chip">🏮 +8</span>`, `<span class="chip">✨ +50</span>`], true);
     });
   }
-  function finish() { sfx.tap(); hide('dialog'); S.dlgOpen = false; S.paused = false; S.slowmo = false; document.body.classList.remove('dlg-run'); if (R) R.inv = 1.2; onDone && onDone(); }
+  function finish() { sfx.tap(); hide('dialog'); S.dlgOpen = false; unpause(); S.slowmo = false; document.body.classList.remove('dlg-run'); if (R) R.inv = 1.2; onDone && onDone(); }
 }
 
 /* =========================================================
@@ -2507,6 +2522,7 @@ function planChapter() {
   const door = drawPool('door', C.DOOR, 1, a => a.id)[0];
   const quest = drawPool('quest', C.SIDE_QUESTS, 1, a => a.title)[0];
   persist();
+  markSeen(quiz);
   return { event, enc, quiz, road, door, quest, verse, story: C.storyBeat(ch) };
 }
 function chapterIntro() {
@@ -2613,9 +2629,15 @@ function pauseGame(reason) {
   const cpb = $('#btnPauseCP'), canCP = S.mode === 'run' && R && R.cp && !$('#modal').classList.contains('show'); cpb.classList.toggle('hidden', !canCP); if (canCP) cpb.textContent = R.vis ? '🔁 Restart the vision' : R.cp.stopIdx > 0 ? `↩ Restart from ${R.cp.name} bus stop` : '↩ Restart from Lagos (the start)';
   show('pause'); if (actx && actx.state === 'running') actx.suspend();
 }
+// v14.5 resume fix: anything that un-pauses the game while the pause menu is up (story-card countdown, dialog, revive)
+// now clears the 'was paused' memory instead, so Resume never lands in a frozen run. Resume also self-checks: if nothing
+// on screen is holding the run (no card, dialog or story), it runs.
+function unpause() { if (S.userPause) S.userPause.prev = false; else S.paused = false; }
+function holdOnScreen() { return S.story || S.dlgOpen || ['modal', 'dialog'].some(id => $('#' + id).classList.contains('show')) || (R && R.vis && R.vis.finished); }
 function resumeGame() {
   if (!S.userPause) return; if (R) { R.jbuf = 0; R.sbuf = 0; } S.paused = S.userPause.prev; S.userPause = null; hide('pause'); hide('settings'); hide('howto');
-  last = performance.now(); if (actx && soundOn) actx.resume();
+  if (S.paused && (S.mode === 'run' || S.mode === 'camp') && !holdOnScreen()) setTimeout(() => { if (!S.userPause && S.paused && !holdOnScreen()) S.paused = false; }, 600);
+  last = performance.now(); lastDraw = 0; if (actx && soundOn) actx.resume();
   if (S.mode === 'run' && R && !S.paused) R.inv = Math.max(R.inv, 0.6);   // a moment of grace after resuming
 }
 $('#btnPause').addEventListener('click', e => { e.stopPropagation(); ensureAudio(); sfx.tap(); pauseGame(); });
@@ -2738,7 +2760,7 @@ function applyQuality(tier) {
 }
 function lowerQuality() {   // auto step-down (only in Auto mode)
   const next = TIER === 'high' ? 'med' : 'low'; if (next === TIER) return;
-  perf.lowered = true; applyQuality(next); toast('Graphics optimised for your phone ⚡', 2000);
+  perf.lowered = true; applyQuality(next); try { localStorage.setItem('lr_autoTier', next); } catch (e) {} toast('Graphics optimised for your phone ⚡', 2000);
 }
 // sample real frame times; nudge resolution toward the 60 fps (or 30 fps) budget
 function dynRes(ms) {
@@ -2749,7 +2771,7 @@ function dynRes(ms) {
   if (avg > DYN.target * 1.15) {
     if (PR > Q.prMin + 0.01) setPR(PR - (avg > DYN.target * 1.6 ? 0.15 : 0.08));
     else if (DYN.target < 20 && avg > 24) DYN.target = 1000 / 30;               // can't hold 60: settle on a steady 30
-    else if (avg > 40 && ++DYN.bad >= 3 && SET.gfx === 'auto' && !params.get('gfx')) { DYN.bad = 0; lowerQuality(); }
+    else if (avg > DYN.target * 1.3 && ++DYN.bad >= 2 && SET.gfx === 'auto' && !params.get('gfx')) { DYN.bad = 0; lowerQuality(); }
   } else if (avg < DYN.target * 0.8 && PR < Q.prMax - 0.01) setPR(PR + 0.05);
   else DYN.bad = 0;
 }
@@ -2759,6 +2781,7 @@ function loop(now) {
   requestAnimationFrame(loop);
   // Battery saver: cap at 30 fps (skip every other vsync), saves heat + battery
   if (Q.cap === 30 && now - lastDraw < 30 && !LAT.t0) return;
+  if (S.userPause && lastDraw && now - lastDraw < 250) return;   // v14.5: paused menu redraws at 4 fps (saves heat/battery)
   const frameMs = now - (lastDraw || now); lastDraw = now;
   let dt = Math.min(0.05, (now - last) / 1000); const real = dt; last = now; dt *= TIME_SCALE; S.rdt = real;
   S.t += dt;
@@ -2771,7 +2794,7 @@ function loop(now) {
     const d = dt / steps;
     if (S.mode === 'title') { updateTitle(dt); break; }
     if (S.mode === 'select') { updateSelect(dt); break; }
-    if (S.paused) break;
+    if (S.paused || S.userPause) break;
     if (S.mode === 'run') updateRun(d); else if (S.mode === 'camp') updateCamp(d);
   }
   if (S.mode === 'intro') { poseHuman(player, 'idle', dt); camera.position.lerp(_pv.set(1.6, 1.7, -3.6), 0.06); camera.lookAt(0, 1.3, 0); sunFollow(0, 0); fx.update(dt, 0, 0); lanternHalo(0); }
@@ -2830,6 +2853,8 @@ window.LR = {
   weather(m) { if (R) R.ev = { ...R.ev, mod: { ...R.ev.mod, ...(m || {}) } }; },   // v14 test hook: force a weather state (rain/fog/dusk)
   get acts() { return R ? { uiAgo: Math.round(performance.now() - UI_T), ...(R.acts || { move: 0, jump: 0, slide: 0, ramp: 0 }), lane: R.lane, py: +R.py.toFixed(2), sl: +R.sl.toFixed(2), wings: R.wings || 0, grind: !!R.grind } : null; },
   vision(id, ep) { startVisionRun(id || 'genesis', ep); },
+  get quiz() { return (R && R.vis ? R.vis.quiz : S.plan ? S.plan.quiz : []).map(q => q[0]); },
+  pauseNow(r) { pauseGame(r); }, resumeNow() { resumeGame(); },
   storyGo() { const b = document.querySelector('#stGo'); if (b && S.story) b.click(); return !!b; },
   get eps() { const b = bible(); return Object.fromEntries(BK.PLAYABLE.map(id => [id, { next: nextEpIdx(b, id), ...epStats(b, id) }])); },
   visD(d) { if (R && R.vis) { const V = R.vis; if (V.boss && d < VIS_BOSS[0]) visBossEnd(false); V.d = d; while (V.gi < V.gates.length && V.gates[V.gi] < d - 2) V.gi++; R.gate = null; hideGateUI(); clearObs(); R.nextRow = 20; V.nextScrollD = d + 40; V.nextPowerD = d + 60; } },
