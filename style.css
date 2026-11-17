@@ -626,3 +626,4 @@ body.storyon #btnPause{display:none}
 .epi i{font-style:normal;font-size:24px;line-height:1}.epi span{flex:1;min-width:0}.epi b{display:block;font-size:14px}.epi small{display:block;font-size:11px;opacity:.75;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .epi em{font-style:normal;font-weight:900;font-size:13px;white-space:nowrap}.epi.done{background:#fff2c4}.epi.next{background:linear-gradient(180deg,#ffe38a,#ffd23f)}
 .epi:active{transform:translateY(2px);box-shadow:0 1px 0 #3b2306}
+#liveCount{position:absolute;left:50%;bottom:calc(10px + env(safe-area-inset-bottom));transform:translateX(-50%);font-size:12px;font-weight:800;color:#fff;background:rgba(0,0,0,.45);padding:3px 10px;border-radius:999px;pointer-events:none;white-space:nowrap}

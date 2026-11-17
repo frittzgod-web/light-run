@@ -22,7 +22,7 @@ const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;',
 const params = new URLSearchParams(location.search);
 const TIME_SCALE = clamp(+params.get('speed') || 1, 1, 8);
 const LITE = params.has('lite');
-const APP_VER = 'v14.3';   // shown on the title, pause and settings so a phone can tell which build it runs
+const APP_VER = 'v14.4';   // shown on the title, pause and settings so a phone can tell which build it runs
 const DEBUG = params.has('debug');
 const NOVIS = params.has('novision'), NOSTORY = params.has('nostory');   // v14.3: ?nostory skips the episode story card (tests)   // v10 test switch: journey without the vision gate
 const AUTO = params.has('autopilot'), AUTO_MIX = params.get('autopilot') === 'mix', AUTO_FUN = AUTO;
@@ -2664,6 +2664,18 @@ $('#tutSkip').addEventListener('click', e => { e.stopPropagation(); sfx.tap(); e
 /* ---- v14: version label, update flow, ?debug overlay ---- */
 document.querySelectorAll('.appver').forEach(e => e.textContent = 'Light Run ' + APP_VER);
 window.LR_VERSION = APP_VER;
+/* v14.4 · player stats (Supabase): an anonymous random id per phone pings once on load and every 60 s while visible.
+   Silent on failure; skipped for ?debug / ?autopilot / localhost test runs. The title shows "N playing now". */
+const LR_SB = { url: 'https://qrncsgzpfksetodtnanu.supabase.co', key: 'sb_publishable_UiRv4U-KA9963Ot5-_5XDA_G_SJ5u2V' };
+window.LR_SB = LR_SB;
+if (!DEBUG && !AUTO && !params.has('nostats') && !/^(localhost|127\.)/.test(location.hostname)) {
+  let pid = null; try { pid = localStorage.getItem('lr_pid'); if (!pid) { pid = crypto.randomUUID(); localStorage.setItem('lr_pid', pid); } } catch (e) {}
+  const rpc = (fn, body) => fetch(`${LR_SB.url}/rest/v1/rpc/${fn}`, { method: 'POST', headers: { apikey: LR_SB.key, 'Content-Type': 'application/json' }, body: JSON.stringify(body || {}) });
+  const ping = () => { if (pid && document.visibilityState === 'visible') rpc('lr_ping', { pid }).catch(() => {}); };
+  const live = () => { if (document.visibilityState !== 'visible' || S.mode !== 'title') return; rpc('lr_stats').then(r => r.ok ? r.json() : null).then(j => { if (!j) return; let e = document.getElementById('liveCount'); if (!e) { e = document.createElement('div'); e.id = 'liveCount'; const t = document.getElementById('title'); t && t.appendChild(e); } e.textContent = `🟢 ${j.online_now} playing now · ${j.today} today`; }).catch(() => {}); };
+  setTimeout(() => { ping(); live(); }, 2500); setInterval(ping, 60000); setInterval(live, 30000);
+  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') ping(); });
+}
 if (DEBUG) { const d = $('#dbg'); d.classList.remove('hidden'); setInterval(() => {
   if (!R) { d.textContent = `${APP_VER} · mode ${S.mode}`; return; }
   const k = nextSlot(), sl = R.visSlots || [];

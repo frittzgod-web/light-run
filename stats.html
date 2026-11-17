@@ -1,0 +1,24 @@
+<!doctype html><html lang="en-GB"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Light Run · Player stats</title><meta name="theme-color" content="#140a24">
+<style>
+*{box-sizing:border-box}body{margin:0;min-height:100vh;font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;background:linear-gradient(180deg,#2a1450,#140a24);color:#fff;padding:20px 16px calc(20px + env(safe-area-inset-bottom))}
+h1{font-size:20px;margin:4px 0 2px}p.sub{margin:0 0 18px;opacity:.7;font-size:13px}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;max-width:520px}
+.card{background:rgba(255,255,255,.08);border:1px solid rgba(255,210,63,.35);border-radius:18px;padding:16px 14px}
+.card b{display:block;font-size:44px;line-height:1.05;color:#ffd23f;font-variant-numeric:tabular-nums}.card span{font-size:13px;opacity:.85;font-weight:700}
+.card.live b{color:#69f0ae}.dot{display:inline-block;width:9px;height:9px;border-radius:50%;background:#69f0ae;margin-right:6px;animation:p 1.4s infinite}
+@keyframes p{50%{opacity:.25}}small{display:block;margin-top:16px;opacity:.6;font-size:12px}a{color:#ffd23f}
+</style></head><body>
+<h1>✨ Redemption City: Light Run</h1><p class="sub">Player stats · updates every 15 s · days in Lagos time</p>
+<div class="grid">
+<div class="card live"><b id="online_now">–</b><span><i class="dot"></i>Online now</span></div>
+<div class="card"><b id="today">–</b><span>Players today</span></div>
+<div class="card"><b id="week">–</b><span>Players this week</span></div>
+<div class="card"><b id="all_time">–</b><span>All-time players</span></div>
+</div>
+<small id="upd">Loading…</small><small>Online = played in the last 2 minutes. Each phone counts once (anonymous). <a href="./">Play the game</a></small>
+<script>
+const URL_='https://qrncsgzpfksetodtnanu.supabase.co/rest/v1/rpc/lr_stats', KEY='sb_publishable_UiRv4U-KA9963Ot5-_5XDA_G_SJ5u2V';
+async function load(){try{const r=await fetch(URL_,{method:'POST',headers:{apikey:KEY,'Content-Type':'application/json'},body:'{}'});const j=await r.json();for(const k of['online_now','today','week','all_time'])document.getElementById(k).textContent=(j[k]??0).toLocaleString('en-GB');document.getElementById('upd').textContent='Updated '+new Date().toLocaleTimeString('en-GB',{timeZone:'Africa/Lagos'})+' WAT';}catch(e){document.getElementById('upd').textContent='Could not reach the stats server, retrying…';}}
+load();setInterval(load,15000);
+</script></body></html>
